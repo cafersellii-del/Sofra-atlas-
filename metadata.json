@@ -1,0 +1,6 @@
+{
+  "name": "Sofra Atlas",
+  "description": "Dünya genelindeki seçkin restoran ve şef mutfaklarından bulunduğunuz şehre hızlı yemek siparişi platformu.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
