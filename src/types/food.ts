@@ -1,11 +1,12 @@
-export type CityId =
-  | 'all'
-  | 'istanbul'
-  | 'tokyo'
-  | 'napoli'
-  | 'paris'
-  | 'bangkok'
-  | 'newyork';
+export type ContinentId =
+  | 'Avrupa'
+  | 'Asya'
+  | 'Kuzey Amerika'
+  | 'Güney Amerika'
+  | 'Afrika'
+  | 'Okyanusya';
+
+export type CityId = 'all' | string;
 
 export type CuisineCategory =
   | 'Tümü'
@@ -23,12 +24,29 @@ export type OrderStatus =
   | 'on_the_way'
   | 'delivered';
 
-export type PaymentMethod = 'card' | 'cash_on_delivery';
+export type PaymentMethod = 'card' | 'digital_wallet' | 'cash_on_delivery';
+
+export type PaymentStatus = 'paid' | 'pending_cod' | 'refunded';
+
+export type CardBrand = 'Troy' | 'Visa' | 'Mastercard' | 'Amex';
+
+export type WalletProvider =
+  | 'sofracuzdan'
+  | 'apple_google_pay'
+  | 'aninda_havale';
+
+export type RestaurantSortOption =
+  | 'recommended'
+  | 'rating'
+  | 'fastest'
+  | 'min_basket';
 
 export interface CityHub {
   id: Exclude<CityId, 'all'>;
   name: string;
   country: string;
+  countryCode: string;
+  continent: ContinentId;
   districtLabel: string;
   neighborhoods: string[];
   currencyCode: string;
@@ -38,6 +56,8 @@ export interface CityHub {
   freeDeliveryThresholdTry: number;
   deliveryFeeTry: number;
   kitchenCount: number;
+  center: { lat: number; lng: number };
+  isFlagship?: boolean;
 }
 
 export interface DishPortion {
@@ -74,6 +94,81 @@ export interface Dish {
   image: string;
   portions: DishPortion[];
   extras: DishExtra[];
+  isPartnerDish?: boolean;
+}
+
+export interface RestaurantStorefront {
+  id: string;
+  name: string;
+  cityId: Exclude<CityId, 'all'>;
+  cityName: string;
+  district: string;
+  cuisineCategory: Exclude<CuisineCategory, 'Tümü'>;
+  avgDeliveryMinutes: string;
+  estimatedMinutesNumeric: number;
+  minBasketTry: number;
+  deliveryFeeTry: number;
+  freeDeliveryThresholdTry: number;
+  rating: number;
+  reviewCount: number;
+  coverImage: string;
+  tagline: string;
+  hasCampaign: boolean;
+  isPartner: boolean;
+  dishes: Dish[];
+}
+
+export type RestaurantStatus = 'active' | 'paused';
+
+export interface RestaurantProfile {
+  id: string;
+  ownerId: string;
+  name: string;
+  cityId: Exclude<CityId, 'all'>;
+  cityName: string;
+  district: string;
+  cuisineCategory: Exclude<CuisineCategory, 'Tümü'>;
+  avgPrepMinutes: string;
+  tagline: string;
+  status: RestaurantStatus;
+}
+
+export interface RestaurantPrivateContact {
+  ownerId: string;
+  contactEmail: string;
+  contactPhone: string;
+  streetAddress: string;
+  taxId: string;
+}
+
+export interface PartnerDishRecord {
+  id: string;
+  ownerId: string;
+  restaurantId: string;
+  restaurantName: string;
+  cityId: Exclude<CityId, 'all'>;
+  cityName: string;
+  district: string;
+  name: string;
+  category: Exclude<CuisineCategory, 'Tümü'>;
+  description: string;
+  story: string;
+  ingredients: string[];
+  priceTry: number;
+  prepMinutes: string;
+  calories: number;
+  isVegetarian: boolean;
+  isSpicy: boolean;
+  isChefSignature: boolean;
+  imagePreset: string;
+  isPublished: boolean;
+}
+
+export interface AdminUserRecord {
+  id: string;
+  uid: string;
+  email: string;
+  note: string;
 }
 
 export interface CartItem {
@@ -86,8 +181,31 @@ export interface CartItem {
   unitPriceTry: number;
 }
 
+export interface SavedCardRecord {
+  id: string;
+  ownerId: string;
+  label: string;
+  holderName: string;
+  brand: CardBrand;
+  last4: string;
+  expiry: string;
+}
+
+export interface PaymentReceipt {
+  transactionId: string;
+  authCode: string;
+  gatewayLabel: string;
+  paidAt: string;
+  cardBrand: CardBrand | '';
+  last4: string;
+  maskedCard: string;
+  refundId?: string;
+}
+
 export interface Order {
   id: string;
+  firestoreId?: string;
+  ownerId?: string;
   createdAt: string;
   cityId: Exclude<CityId, 'all'>;
   cityName: string;
@@ -96,6 +214,9 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  paymentDetails?: PaymentReceipt;
+  deliveryPreferences?: string[];
   items: {
     dishName: string;
     restaurantName: string;

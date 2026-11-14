@@ -1,0 +1,336 @@
+import type { CityHub, ContinentId } from '../types/food';
+
+export const CONTINENTS: {
+  id: ContinentId;
+  label: string;
+  center: { lat: number; lng: number };
+  zoom: number;
+}[] = [
+  { id: 'Avrupa', label: 'Avrupa', center: { lat: 48.5, lng: 14.0 }, zoom: 4 },
+  { id: 'Asya', label: 'Asya', center: { lat: 30.0, lng: 96.0 }, zoom: 3 },
+  {
+    id: 'Kuzey Amerika',
+    label: 'Kuzey & Orta Amerika',
+    center: { lat: 34.0, lng: -96.0 },
+    zoom: 3,
+  },
+  {
+    id: 'Güney Amerika',
+    label: 'Güney Amerika',
+    center: { lat: -15.0, lng: -60.0 },
+    zoom: 3,
+  },
+  { id: 'Afrika', label: 'Afrika', center: { lat: 4.0, lng: 20.0 }, zoom: 3 },
+  {
+    id: 'Okyanusya',
+    label: 'Okyanusya',
+    center: { lat: -24.0, lng: 142.0 },
+    zoom: 4,
+  },
+];
+
+// [id, cityName, country, countryCode, continent, lat, lng, currencyCode, currencySymbol, rateToTry, neighborhoods, avgDelivery?, kitchenCount?, isFlagship?]
+type CountryTuple = [
+  id: string,
+  name: string,
+  country: string,
+  countryCode: string,
+  continent: ContinentId,
+  lat: number,
+  lng: number,
+  currencyCode: string,
+  currencySymbol: string,
+  rateToTry: number,
+  neighborhoods: string[],
+  avgDelivery?: string,
+  kitchenCount?: number,
+  isFlagship?: boolean,
+];
+
+const RAW_COUNTRIES: CountryTuple[] = [
+  // ================= AVRUPA =================
+  ['istanbul', 'İstanbul', 'Türkiye', 'tr', 'Avrupa', 41.0256, 28.9744, 'TRY', '₺', 1, ['Karaköy', 'Nişantaşı', 'Moda / Kadıköy', 'Bebek', 'Cihangir'], '22–30 dk', 42, true],
+  ['napoli', 'Napoli', 'İtalya', 'it', 'Avrupa', 40.8518, 14.2681, 'EUR', '€', 0.027, ['Centro Storico', 'Chiaia', 'Vomero', 'San Ferdinando'], '25–32 dk', 29, true],
+  ['paris', 'Paris', 'Fransa', 'fr', 'Avrupa', 48.8566, 2.3522, 'EUR', '€', 0.027, ['Le Marais', 'Saint-Germain-des-Prés', 'Montmartre', 'Canal Saint-Martin'], '25–35 dk', 34, true],
+  ['de', 'Berlin', 'Almanya', 'de', 'Avrupa', 52.52, 13.405, 'EUR', '€', 0.027, ['Mitte', 'Kreuzberg', 'Charlottenburg', 'Prenzlauer Berg'], '22–30 dk', 36, true],
+  ['gb', 'Londra', 'Birleşik Krallık', 'gb', 'Avrupa', 51.5074, -0.1278, 'GBP', '£', 0.023, ['Soho', 'Shoreditch', 'Covent Garden', 'Kensington'], '24–32 dk', 44, true],
+  ['es', 'Madrid', 'İspanya', 'es', 'Avrupa', 40.4168, -3.7038, 'EUR', '€', 0.027, ['Sol', 'Salamanca', 'Malasaña', 'Chueca'], '22–30 dk', 28, true],
+  ['nl', 'Amsterdam', 'Hollanda', 'nl', 'Avrupa', 52.3676, 4.9041, 'EUR', '€', 0.027, ['Centrum', 'Jordaan', 'De Pijp'], '20–28 dk', 24],
+  ['be', 'Brüksel', 'Belçika', 'be', 'Avrupa', 50.8503, 4.3517, 'EUR', '€', 0.027, ['Grand Place', 'Ixelles', 'Saint-Gilles']],
+  ['ch', 'Zürih', 'İsviçre', 'ch', 'Avrupa', 47.3769, 8.5417, 'CHF', 'CHF ', 0.025, ['Altstadt', 'Seefeld', 'Kreis 4']],
+  ['at', 'Viyana', 'Avusturya', 'at', 'Avrupa', 48.2082, 16.3738, 'EUR', '€', 0.027, ['Innere Stadt', 'Neubau', 'Leopoldstadt']],
+  ['pt', 'Lizbon', 'Portekiz', 'pt', 'Avrupa', 38.7223, -9.1393, 'EUR', '€', 0.027, ['Chiado', 'Alfama', 'Príncipe Real']],
+  ['gr', 'Atina', 'Yunanistan', 'gr', 'Avrupa', 37.9838, 23.7275, 'EUR', '€', 0.027, ['Plaka', 'Kolonaki', 'Psiri']],
+  ['pl', 'Varşova', 'Polonya', 'pl', 'Avrupa', 52.2297, 21.0122, 'PLN', 'zł', 0.115, ['Śródmieście', 'Mokotów', 'Praga']],
+  ['se', 'Stockholm', 'İsveç', 'se', 'Avrupa', 59.3293, 18.0686, 'SEK', 'kr', 0.31, ['Norrmalm', 'Södermalm', 'Östermalm']],
+  ['no', 'Oslo', 'Norveç', 'no', 'Avrupa', 59.9139, 10.7522, 'NOK', 'kr', 0.32, ['Sentrum', 'Grünerløkka', 'Frogner']],
+  ['dk', 'Kopenhag', 'Danimarka', 'dk', 'Avrupa', 55.6761, 12.5683, 'DKK', 'kr', 0.2, ['Indre By', 'Vesterbro', 'Nørrebro']],
+  ['fi', 'Helsinki', 'Finlandiya', 'fi', 'Avrupa', 60.1699, 24.9384, 'EUR', '€', 0.027, ['Kamppi', 'Kallio', 'Punavuori']],
+  ['ie', 'Dublin', 'İrlanda', 'ie', 'Avrupa', 53.3498, -6.2603, 'EUR', '€', 0.027, ['Temple Bar', 'Rathmines', 'Portobello']],
+  ['cz', 'Prag', 'Çekya', 'cz', 'Avrupa', 50.0755, 14.4378, 'CZK', 'Kč', 0.68, ['Staré Město', 'Vinohrady', 'Karlín']],
+  ['hu', 'Budapeşte', 'Macaristan', 'hu', 'Avrupa', 47.4979, 19.0402, 'HUF', 'Ft', 10.9, ['Belváros', 'Erzsébetváros', 'Buda']],
+  ['ro', 'Bükreş', 'Romanya', 'ro', 'Avrupa', 44.4268, 26.1025, 'RON', 'lei', 0.13, ['Centrul Vechi', 'Floreasca', 'Cotroceni']],
+  ['bg', 'Sofya', 'Bulgaristan', 'bg', 'Avrupa', 42.6977, 23.3219, 'BGN', 'лв', 0.053, ['Sredets', 'Lozenets', 'Oborishte']],
+  ['hr', 'Zagreb', 'Hırvatistan', 'hr', 'Avrupa', 45.815, 15.9819, 'EUR', '€', 0.027, ['Donji Grad', 'Gornji Grad', 'Maksimir']],
+  ['rs', 'Belgrad', 'Sırbistan', 'rs', 'Avrupa', 44.7866, 20.4489, 'RSD', 'din', 3.16, ['Stari Grad', 'Vračar', 'Dorćol']],
+  ['ua', 'Kiev', 'Ukrayna', 'ua', 'Avrupa', 50.4501, 30.5234, 'UAH', '₴', 1.18, ['Shevchenkivskyi', 'Pechersk', 'Podil']],
+  ['ru', 'Moskova', 'Rusya', 'ru', 'Avrupa', 55.7558, 37.6173, 'RUB', '₽', 2.8, ['Tverskoy', 'Arbat', 'Patriarch Ponds']],
+  ['is', 'Reykjavik', 'İzlanda', 'is', 'Avrupa', 64.1466, -21.9426, 'ISK', 'kr', 4.0, ['Miðborg', 'Vesturbær', 'Hlíðar']],
+  ['lu', 'Lüksemburg', 'Lüksemburg', 'lu', 'Avrupa', 49.6116, 6.1319, 'EUR', '€', 0.027, ['Ville Haute', 'Kirchberg', 'Gare']],
+  ['sk', 'Bratislava', 'Slovakya', 'sk', 'Avrupa', 48.1486, 17.1077, 'EUR', '€', 0.027, ['Staré Mesto', 'Ružinov', 'Petržalka']],
+  ['si', 'Ljubljana', 'Slovenya', 'si', 'Avrupa', 46.0569, 14.5058, 'EUR', '€', 0.027, ['Center', 'Šiška', 'Trnovo']],
+  ['ee', 'Tallinn', 'Estonya', 'ee', 'Avrupa', 59.437, 24.7536, 'EUR', '€', 0.027, ['Kesklinn', 'Kalamaja', 'Kadriorg']],
+  ['lv', 'Riga', 'Letonya', 'lv', 'Avrupa', 56.9496, 24.1052, 'EUR', '€', 0.027, ['Centrs', 'Vecrīga', 'Āgenskalns']],
+  ['lt', 'Vilnius', 'Litvanya', 'lt', 'Avrupa', 54.6872, 25.2797, 'EUR', '€', 0.027, ['Senamiestis', 'Užupis', 'Naujamiestis']],
+  ['mt', 'Valletta', 'Malta', 'mt', 'Avrupa', 35.8989, 14.5146, 'EUR', '€', 0.027, ['Valletta', 'Sliema', 'St. Julian’s']],
+  ['cy', 'Lefkoşa', 'Kıbrıs', 'cy', 'Avrupa', 35.1856, 33.3823, 'EUR', '€', 0.027, ['Merkez', 'Engomi', 'Strovolos']],
+  ['al', 'Tiran', 'Arnavutluk', 'al', 'Avrupa', 41.3275, 19.8187, 'ALL', 'L', 2.65, ['Blloku', 'Pazari i Ri', 'Kombinat']],
+  ['mk', 'Üsküp', 'Kuzey Makedonya', 'mk', 'Avrupa', 41.9973, 21.428, 'MKD', 'ден', 1.66, ['Centar', 'Debar Maalo', 'Karpoš']],
+  ['ba', 'Saraybosna', 'Bosna-Hersek', 'ba', 'Avrupa', 43.8563, 18.4131, 'BAM', 'KM', 0.053, ['Baščaršija', 'Centar', 'Grbavica']],
+  ['me', 'Podgorica', 'Karadağ', 'me', 'Avrupa', 42.4304, 19.2594, 'EUR', '€', 0.027, ['Centar', 'Preko Morače', 'City Kvart']],
+  ['md', 'Kişinev', 'Moldova', 'md', 'Avrupa', 47.0105, 28.8638, 'MDL', 'L', 0.52, ['Centru', 'Botanica', 'Rîșcani']],
+  ['by', 'Minsk', 'Belarus', 'by', 'Avrupa', 53.9006, 27.559, 'BYN', 'Br', 0.095, ['Tsentralny', 'Sovetsky', 'Pervomaysky']],
+  ['ad', 'Andorra la Vella', 'Andorra', 'ad', 'Avrupa', 42.5063, 1.5218, 'EUR', '€', 0.027, ['Merkez', 'Escaldes-Engordany']],
+  ['mc', 'Monako', 'Monako', 'mc', 'Avrupa', 43.7384, 7.4246, 'EUR', '€', 0.027, ['Monte Carlo', 'La Condamine', 'Fontvieille']],
+  ['sm', 'San Marino', 'San Marino', 'sm', 'Avrupa', 43.9424, 12.4578, 'EUR', '€', 0.027, ['Centro Storico', 'Borgo Maggiore']],
+  ['li', 'Vaduz', 'Lihtenştayn', 'li', 'Avrupa', 47.141, 9.5209, 'CHF', 'CHF ', 0.025, ['Vaduz Merkez', 'Schaan']],
+  ['va', 'Vatikan', 'Vatikan', 'va', 'Avrupa', 41.9029, 12.4534, 'EUR', '€', 0.027, ['Borgo', 'Prati Çevresi']],
+
+  // ================= ASYA =================
+  ['tokyo', 'Tokyo', 'Japonya', 'jp', 'Asya', 35.6595, 139.7004, 'JPY', '¥', 4.35, ['Shibuya', 'Ginza', 'Daikanyama', 'Aoyama', 'Shinjuku'], '20–28 dk', 38, true],
+  ['bangkok', 'Bangkok', 'Tayland', 'th', 'Asya', 13.7367, 100.5608, 'THB', '฿', 0.98, ['Sukhumvit', 'Thonglor', 'Ari', 'Silom'], '18–26 dk', 31, true],
+  ['kr', 'Seul', 'Güney Kore', 'kr', 'Asya', 37.5665, 126.978, 'KRW', '₩', 39.5, ['Gangnam', 'Itaewon', 'Hongdae', 'Myeongdong'], '20–28 dk', 35, true],
+  ['ae', 'Dubai', 'Birleşik Arap Emirlikleri', 'ae', 'Asya', 25.2048, 55.2708, 'AED', 'AED ', 0.106, ['DIFC', 'Downtown Dubai', 'Dubai Marina', 'Jumeirah'], '22–30 dk', 33, true],
+  ['cn', 'Şanghay', 'Çin', 'cn', 'Asya', 31.2304, 121.4737, 'CNY', '¥', 0.21, ['Jing’an', 'French Concession', 'Pudong', 'Xuhui'], '22–32 dk', 39],
+  ['in', 'Mumbai', 'Hindistan', 'in', 'Asya', 19.076, 72.8777, 'INR', '₹', 2.45, ['Bandra', 'Colaba', 'Lower Parel', 'Juhu'], '24–34 dk', 41],
+  ['sg', 'Singapur', 'Singapur', 'sg', 'Asya', 1.3521, 103.8198, 'SGD', 'S$', 0.038, ['Orchard', 'Marina Bay', 'Tiong Bahru'], '18–26 dk', 29],
+  ['id', 'Cakarta', 'Endonezya', 'id', 'Asya', -6.2088, 106.8456, 'IDR', 'Rp', 455, ['Menteng', 'Senopati', 'Kemang']],
+  ['vn', 'Ho Chi Minh', 'Vietnam', 'vn', 'Asya', 10.8231, 106.6297, 'VND', '₫', 735, ['District 1', 'District 3', 'Thao Dien']],
+  ['my', 'Kuala Lumpur', 'Malezya', 'my', 'Asya', 3.139, 101.6869, 'MYR', 'RM', 0.128, ['Bukit Bintang', 'KLCC', 'Bangsar']],
+  ['ph', 'Manila', 'Filipinler', 'ph', 'Asya', 14.5995, 120.9842, 'PHP', '₱', 1.68, ['Makati', 'BGC', 'Malate']],
+  ['sa', 'Riyad', 'Suudi Arabistan', 'sa', 'Asya', 24.7136, 46.6753, 'SAR', 'SAR ', 0.108, ['Olaya', 'Al Malqa', 'Diplomatic Quarter']],
+  ['qa', 'Doha', 'Katar', 'qa', 'Asya', 25.2854, 51.531, 'QAR', 'QAR ', 0.105, ['West Bay', 'The Pearl', 'Msheireb']],
+  ['kw', 'Kuveyt', 'Kuveyt', 'kw', 'Asya', 29.3759, 47.9774, 'KWD', 'KWD ', 0.0089, ['Salmiya', 'Sharq', 'Hawalli']],
+  ['bh', 'Manama', 'Bahreyn', 'bh', 'Asya', 26.2285, 50.586, 'BHD', 'BHD ', 0.011, ['Seef', 'Adliya', 'Juffair']],
+  ['om', 'Maskat', 'Umman', 'om', 'Asya', 23.588, 58.3829, 'OMR', 'OMR ', 0.011, ['Qurum', 'Mutrah', 'Al Mouj']],
+  ['jo', 'Amman', 'Ürdün', 'jo', 'Asya', 31.9454, 35.9284, 'JOD', 'JOD ', 0.02, ['Abdoun', 'Jabal Amman', 'Sweifieh']],
+  ['lb', 'Beyrut', 'Lübnan', 'lb', 'Asya', 33.8938, 35.5018, 'USD', '$', 0.029, ['Hamra', 'Achrafieh', 'Gemmayzeh']],
+  ['il', 'Tel Aviv', 'İsrail', 'il', 'Asya', 32.0853, 34.7818, 'ILS', '₪', 0.107, ['Neve Tzedek', 'Florentin', 'Rothschild']],
+  ['ps', 'Ramallah', 'Filistin', 'ps', 'Asya', 31.9038, 35.2034, 'ILS', '₪', 0.107, ['Al-Masyoun', 'Al-Tireh']],
+  ['iq', 'Bağdat', 'Irak', 'iq', 'Asya', 33.3152, 44.3661, 'IQD', 'IQD ', 37.8, ['Mansour', 'Karrada', 'Jadriya']],
+  ['ir', 'Tahran', 'İran', 'ir', 'Asya', 35.6892, 51.389, 'IRR', 'IRR ', 1210, ['Elahiyeh', 'Saadat Abad', 'Tajrish']],
+  ['az', 'Bakü', 'Azerbaycan', 'az', 'Asya', 40.4093, 49.8671, 'AZN', '₼', 0.049, ['Nizami', 'İçərişəhər', 'Nərimanov']],
+  ['ge', 'Tiflis', 'Gürcistan', 'ge', 'Asya', 41.7151, 44.8271, 'GEL', '₾', 0.078, ['Vera', 'Vake', 'Sololaki']],
+  ['am', 'Erivan', 'Ermenistan', 'am', 'Asya', 40.1792, 44.4991, 'AMD', '֏', 11.2, ['Kentron', 'Arabkir']],
+  ['kz', 'Almatı', 'Kazakistan', 'kz', 'Asya', 43.222, 76.8512, 'KZT', '₸', 14.1, ['Medeu', 'Almaly', 'Bostandyk']],
+  ['uz', 'Taşkent', 'Özbekistan', 'uz', 'Asya', 41.2995, 69.2401, 'UZS', 'soʻm ', 368, ['Yunusabad', 'Mirzo Ulugbek', 'Chilanzar']],
+  ['tm', 'Aşkabat', 'Türkmenistan', 'tm', 'Asya', 37.9601, 58.3261, 'TMT', 'm', 0.1, ['Merkez', 'Berkarar']],
+  ['kg', 'Bişkek', 'Kırgızistan', 'kg', 'Asya', 42.8746, 74.5698, 'KGS', 'сом ', 2.5, ['Pervomay', 'Oktyabr']],
+  ['tj', 'Duşanbe', 'Tacikistan', 'tj', 'Asya', 38.5598, 68.787, 'TJS', 'SM ', 0.31, ['Rudaki', 'Sino']],
+  ['pk', 'Lahor', 'Pakistan', 'pk', 'Asya', 31.5204, 74.3587, 'PKR', '₨', 8.0, ['Gulberg', 'DHA', 'Model Town']],
+  ['bd', 'Dakka', 'Bangladeş', 'bd', 'Asya', 23.8103, 90.4125, 'BDT', '৳', 3.45, ['Gulshan', 'Banani', 'Dhanmondi']],
+  ['lk', 'Kolombo', 'Sri Lanka', 'lk', 'Asya', 6.9271, 79.8612, 'LKR', 'Rs', 8.5, ['Cinnamon Gardens', 'Kollupitiya']],
+  ['np', 'Katmandu', 'Nepal', 'np', 'Asya', 27.7172, 85.324, 'NPR', '₨', 3.9, ['Thamel', 'Patan', 'Lazimpat']],
+  ['mm', 'Yangon', 'Myanmar', 'mm', 'Asya', 16.8409, 96.1735, 'MMK', 'K', 60.5, ['Bahan', 'Dagon', 'Sanchaung']],
+  ['kh', 'Phnom Penh', 'Kamboçya', 'kh', 'Asya', 11.5564, 104.9282, 'USD', '$', 0.029, ['BKK1', 'Daun Penh', 'Toul Kork']],
+  ['la', 'Vientiane', 'Laos', 'la', 'Asya', 17.9757, 102.6331, 'LAK', '₭', 630, ['Chanthabouly', 'Sisattanak']],
+  ['mn', 'Ulan Batur', 'Moğolistan', 'mn', 'Asya', 47.8864, 106.9057, 'MNT', '₮', 98.5, ['Sükhbaatar', 'Khan-Uul']],
+  ['kp', 'Pyongyang', 'Kuzey Kore', 'kp', 'Asya', 39.0392, 125.7625, 'KPW', '₩', 26, ['Chung-guyok', 'Moranbong']],
+  ['tw', 'Taipei', 'Tayvan', 'tw', 'Asya', 25.033, 121.5654, 'TWD', 'NT$', 0.93, ['Xinyi', 'Da’an', 'Zhongshan']],
+  ['bn', 'Bandar Seri Begawan', 'Brunei', 'bn', 'Asya', 4.9031, 114.9398, 'BND', 'B$', 0.038, ['Gadong', 'Kiulap']],
+  ['mv', 'Malé', 'Maldivler', 'mv', 'Asya', 4.1755, 73.5093, 'MVR', 'Rf', 0.44, ['Henveiru', 'Hulhumalé']],
+  ['bt', 'Thimphu', 'Bhutan', 'bt', 'Asya', 27.4728, 89.639, 'BTN', 'Nu.', 2.45, ['Norzin Lam', 'Motithang']],
+  ['tl', 'Dili', 'Doğu Timor', 'tl', 'Asya', -8.5569, 125.5603, 'USD', '$', 0.029, ['Colmera', 'Farol']],
+  ['sy', 'Şam', 'Suriye', 'sy', 'Asya', 33.5138, 36.2765, 'SYP', '£S', 375, ['Malki', 'Abu Rummaneh']],
+  ['ye', 'Sana', 'Yemen', 'ye', 'Asya', 15.3694, 44.191, 'YER', '﷼', 7.25, ['Hadda', 'Old Sana’a']],
+  ['af', 'Kabil', 'Afganistan', 'af', 'Asya', 34.5553, 69.2075, 'AFN', '؋', 2.0, ['Shahr-e Naw', 'Wazir Akbar Khan']],
+
+  // ================= KUZEY & ORTA AMERİKA =================
+  ['newyork', 'New York', 'ABD', 'us', 'Kuzey Amerika', 40.7233, -74.003, 'USD', '$', 0.029, ['SoHo', 'West Village', 'Williamsburg', 'Tribeca', 'Upper West Side'], '24–34 dk', 46, true],
+  ['ca', 'Toronto', 'Kanada', 'ca', 'Kuzey Amerika', 43.6532, -79.3832, 'CAD', 'CA$', 0.04, ['Downtown', 'Yorkville', 'Queen West', 'Kensington'], '22–32 dk', 32, true],
+  ['mx', 'Meksiko', 'Meksika', 'mx', 'Kuzey Amerika', 19.4326, -99.1332, 'MXN', 'MX$', 0.58, ['Roma Norte', 'Condesa', 'Polanco', 'Coyoacán'], '20–30 dk', 34, true],
+  ['cu', 'Havana', 'Küba', 'cu', 'Kuzey Amerika', 23.1136, -82.3666, 'CUP', '$', 0.7, ['Vedado', 'Habana Vieja', 'Miramar']],
+  ['do', 'Santo Domingo', 'Dominik Cumhuriyeti', 'do', 'Kuzey Amerika', 18.4861, -69.9312, 'DOP', 'RD$', 1.74, ['Zona Colonial', 'Piantini', 'Naco']],
+  ['jm', 'Kingston', 'Jamaika', 'jm', 'Kuzey Amerika', 18.0179, -76.8099, 'JMD', 'J$', 4.5, ['New Kingston', 'Liguanea']],
+  ['cr', 'San José', 'Kosta Rika', 'cr', 'Kuzey Amerika', 9.9281, -84.0907, 'CRC', '₡', 14.8, ['Escalante', 'Escazú', 'Sabana']],
+  ['pa', 'Panama', 'Panama', 'pa', 'Kuzey Amerika', 8.9824, -79.5199, 'USD', '$', 0.029, ['Casco Viejo', 'Punta Pacífica', 'Obarrio']],
+  ['gt', 'Guatemala', 'Guatemala', 'gt', 'Kuzey Amerika', 14.6349, -90.5069, 'GTQ', 'Q', 0.22, ['Zona 10', 'Zona 4', 'Cayalá']],
+  ['hn', 'Tegucigalpa', 'Honduras', 'hn', 'Kuzey Amerika', 14.0723, -87.1921, 'HNL', 'L', 0.72, ['Palmira', 'Lomas del Guijarro']],
+  ['sv', 'San Salvador', 'El Salvador', 'sv', 'Kuzey Amerika', 13.6929, -89.2182, 'USD', '$', 0.029, ['Escalón', 'San Benito']],
+  ['ni', 'Managua', 'Nikaragua', 'ni', 'Kuzey Amerika', 12.1149, -86.2362, 'NIO', 'C$', 1.06, ['Las Colinas', 'Los Robles']],
+  ['bz', 'Belize City', 'Belize', 'bz', 'Kuzey Amerika', 17.5046, -88.1962, 'BZD', 'BZ$', 0.058, ['Fort George', 'King’s Park']],
+  ['bs', 'Nassau', 'Bahamalar', 'bs', 'Kuzey Amerika', 25.0443, -77.3504, 'BSD', 'B$', 0.029, ['Downtown Nassau', 'Cable Beach']],
+  ['bb', 'Bridgetown', 'Barbados', 'bb', 'Kuzey Amerika', 13.1132, -59.5988, 'BBD', 'Bds$', 0.058, ['Hastings', 'Holetown']],
+  ['tt', 'Port of Spain', 'Trinidad ve Tobago', 'tt', 'Kuzey Amerika', 10.6603, -61.5086, 'TTD', 'TT$', 0.19, ['Woodbrook', 'St. Clair']],
+  ['ht', 'Port-au-Prince', 'Haiti', 'ht', 'Kuzey Amerika', 18.5944, -72.3074, 'HTG', 'G', 3.8, ['Pétion-Ville', 'Turgeau']],
+  ['ag', 'St. John’s', 'Antigua ve Barbuda', 'ag', 'Kuzey Amerika', 17.1274, -61.8468, 'XCD', 'EC$', 0.078, ['Heritage Quay', 'Dickenson Bay']],
+  ['dm', 'Roseau', 'Dominika', 'dm', 'Kuzey Amerika', 15.3092, -61.3794, 'XCD', 'EC$', 0.078, ['Roseau Merkez', 'Pottersville']],
+  ['gd', 'St. George’s', 'Grenada', 'gd', 'Kuzey Amerika', 12.0561, -61.7488, 'XCD', 'EC$', 0.078, ['Carenage', 'Grand Anse']],
+  ['kn', 'Basseterre', 'Saint Kitts ve Nevis', 'kn', 'Kuzey Amerika', 17.3026, -62.7177, 'XCD', 'EC$', 0.078, ['Basseterre', 'Frigate Bay']],
+  ['lc', 'Castries', 'Saint Lucia', 'lc', 'Kuzey Amerika', 14.0101, -60.9875, 'XCD', 'EC$', 0.078, ['Castries', 'Rodney Bay']],
+  ['vc', 'Kingstown', 'Saint Vincent ve Grenadinler', 'vc', 'Kuzey Amerika', 13.1587, -61.2248, 'XCD', 'EC$', 0.078, ['Kingstown', 'Villa']],
+
+  // ================= GÜNEY AMERİKA =================
+  ['br', 'São Paulo', 'Brezilya', 'br', 'Güney Amerika', -23.5505, -46.6333, 'BRL', 'R$', 0.165, ['Jardins', 'Pinheiros', 'Vila Madalena', 'Itaim Bibi'], '24–32 dk', 37, true],
+  ['ar', 'Buenos Aires', 'Arjantin', 'ar', 'Güney Amerika', -34.6037, -58.3816, 'ARS', 'AR$', 28.5, ['Palermo', 'Recoleta', 'San Telmo', 'Puerto Madero'], '24–34 dk', 27, true],
+  ['co', 'Bogotá', 'Kolombiya', 'co', 'Güney Amerika', 4.711, -74.0721, 'COP', 'COL$', 122, ['Zona T', 'Chapinero', 'Usaquén']],
+  ['cl', 'Santiago', 'Şili', 'cl', 'Güney Amerika', -33.4489, -70.6693, 'CLP', 'CLP$', 27.8, ['Providencia', 'Las Condes', 'Lastarria']],
+  ['pe', 'Lima', 'Peru', 'pe', 'Güney Amerika', -12.0464, -77.0428, 'PEN', 'S/', 0.109, ['Miraflores', 'Barranco', 'San Isidro']],
+  ['ec', 'Quito', 'Ekvador', 'ec', 'Güney Amerika', -0.1807, -78.4678, 'USD', '$', 0.029, ['La Floresta', 'Centro Histórico', 'Cumbayá']],
+  ['uy', 'Montevideo', 'Uruguay', 'uy', 'Güney Amerika', -34.9011, -56.1645, 'UYU', '$U', 1.22, ['Pocitos', 'Punta Carretas', 'Ciudad Vieja']],
+  ['py', 'Asunción', 'Paraguay', 'py', 'Güney Amerika', -25.2637, -57.5759, 'PYG', '₲', 225, ['Villa Morra', 'Carmelitas']],
+  ['bo', 'La Paz', 'Bolivya', 'bo', 'Güney Amerika', -16.4897, -68.1193, 'BOB', 'Bs', 0.2, ['Sopocachi', 'Zona Sur']],
+  ['ve', 'Karakas', 'Venezuela', 've', 'Güney Amerika', 10.4806, -66.9036, 'USD', '$', 0.029, ['Las Mercedes', 'Altamira', 'Chacao']],
+  ['gy', 'Georgetown', 'Guyana', 'gy', 'Güney Amerika', 6.8013, -58.1551, 'GYD', 'G$', 6.0, ['Kingston', 'Stabroek']],
+  ['sr', 'Paramaribo', 'Surinam', 'sr', 'Güney Amerika', 5.852, -55.2038, 'SRD', 'SRD ', 1.02, ['Centrum', 'Rainville']],
+
+  // ================= AFRİKA =================
+  ['eg', 'Kahire', 'Mısır', 'eg', 'Afrika', 30.0444, 31.2357, 'EGP', 'E£', 1.42, ['Zamalek', 'Maadi', 'Downtown', 'New Cairo'], '22–32 dk', 30, true],
+  ['ma', 'Kazablanka', 'Fas', 'ma', 'Afrika', 33.5731, -7.5898, 'MAD', 'MAD ', 0.285, ['Anfa', 'Gauthier', 'Maârif', 'Ain Diab'], '22–30 dk', 26, true],
+  ['za', 'Cape Town', 'Güney Afrika', 'za', 'Afrika', -33.9249, 18.4241, 'ZAR', 'R', 0.52, ['City Bowl', 'Sea Point', 'Camps Bay', 'Kloof Street'], '24–32 dk', 28, true],
+  ['ng', 'Lagos', 'Nijerya', 'ng', 'Afrika', 6.5244, 3.3792, 'NGN', '₦', 46, ['Victoria Island', 'Ikoyi', 'Lekki Phase 1']],
+  ['ke', 'Nairobi', 'Kenya', 'ke', 'Afrika', -1.2921, 36.8219, 'KES', 'KSh', 3.75, ['Westlands', 'Kilimani', 'Karen']],
+  ['tn', 'Tunus', 'Tunus', 'tn', 'Afrika', 36.8065, 10.1815, 'TND', 'DT ', 0.09, ['La Marsa', 'Lac 1', 'Médina']],
+  ['dz', 'Cezayir', 'Cezayir', 'dz', 'Afrika', 36.7538, 3.0588, 'DZD', 'DA ', 3.9, ['Hydra', 'Alger Centre', 'Sidi Yahia']],
+  ['ly', 'Trablus', 'Libya', 'ly', 'Afrika', 32.8872, 13.1913, 'LYD', 'LD ', 0.14, ['Hay Al-Andalus', 'Gargaresh']],
+  ['et', 'Addis Ababa', 'Etiyopya', 'et', 'Afrika', 9.032, 38.7469, 'ETB', 'Br', 3.5, ['Bole', 'Kazanchis', 'Piazza']],
+  ['gh', 'Akra', 'Gana', 'gh', 'Afrika', 5.6037, -0.187, 'GHS', '₵', 0.44, ['Osu', 'East Legon', 'Airport Residential']],
+  ['sn', 'Dakar', 'Senegal', 'sn', 'Afrika', 14.7167, -17.4677, 'XOF', 'CFA ', 17.5, ['Plateau', 'Almadies', 'Mermoz']],
+  ['ci', 'Abidjan', 'Fildişi Sahili', 'ci', 'Afrika', 5.36, -4.0083, 'XOF', 'CFA ', 17.5, ['Cocody', 'Plateau', 'Marcory']],
+  ['tz', 'Darüsselam', 'Tanzanya', 'tz', 'Afrika', -6.7924, 39.2083, 'TZS', 'TSh', 76, ['Masaki', 'Oysterbay', 'Mikocheni']],
+  ['ug', 'Kampala', 'Uganda', 'ug', 'Afrika', 0.3476, 32.5825, 'UGX', 'USh', 107, ['Kololo', 'Nakasero', 'Bugolobi']],
+  ['rw', 'Kigali', 'Ruanda', 'rw', 'Afrika', -1.9441, 30.0619, 'RWF', 'FRw', 39, ['Kiyovu', 'Kimihurura', 'Nyarutarama']],
+  ['cm', 'Yaoundé', 'Kamerun', 'cm', 'Afrika', 3.848, 11.5021, 'XAF', 'CFA ', 17.5, ['Bastos', 'Centre Ville']],
+  ['ao', 'Luanda', 'Angola', 'ao', 'Afrika', -8.839, 13.2894, 'AOA', 'Kz', 26, ['Miramar', 'Talatona', 'Ilha']],
+  ['mz', 'Maputo', 'Mozambik', 'mz', 'Afrika', -25.9692, 32.5732, 'MZN', 'MT', 1.85, ['Polana', 'Sommerschield']],
+  ['zm', 'Lusaka', 'Zambiya', 'zm', 'Afrika', -15.3875, 28.3228, 'ZMW', 'ZK', 0.77, ['Kabulonga', 'Rhodes Park']],
+  ['zw', 'Harare', 'Zimbabve', 'zw', 'Afrika', -17.8252, 31.0335, 'USD', '$', 0.029, ['Borrowdale', 'Avondale']],
+  ['bw', 'Gaborone', 'Botsvana', 'bw', 'Afrika', -24.6282, 25.9231, 'BWP', 'P', 0.39, ['CBD', 'Phakalane']],
+  ['na', 'Windhoek', 'Namibya', 'na', 'Afrika', -22.5609, 17.0658, 'NAD', 'N$', 0.52, ['Klein Windhoek', 'CBD']],
+  ['mu', 'Port Louis', 'Mauritius', 'mu', 'Afrika', -20.1609, 57.5012, 'MUR', '₨', 1.33, ['Caudan', 'Grand Baie']],
+  ['mg', 'Antananarivo', 'Madagaskar', 'mg', 'Afrika', -18.8792, 47.5079, 'MGA', 'Ar', 132, ['Analakely', 'Isoraka']],
+  ['sd', 'Hartum', 'Sudan', 'sd', 'Afrika', 15.5007, 32.5599, 'SDG', 'SDG ', 17.4, ['Al-Amarat', 'Riyadh']],
+  ['ss', 'Juba', 'Güney Sudan', 'ss', 'Afrika', 4.8594, 31.5713, 'SSP', 'SSP ', 38, ['Hai Cinema', 'Tongping']],
+  ['so', 'Mogadişu', 'Somali', 'so', 'Afrika', 2.0469, 45.3182, 'SOS', 'SOS ', 16.5, ['Hamar Weyne', 'Hodan']],
+  ['dj', 'Cibuti', 'Cibuti', 'dj', 'Afrika', 11.5721, 43.1456, 'DJF', 'Fdj', 5.15, ['Plateau', 'Heron']],
+  ['er', 'Asmara', 'Eritre', 'er', 'Afrika', 15.3229, 38.9251, 'ERN', 'Nfk', 0.43, ['Maekel', 'Sembel']],
+  ['ml', 'Bamako', 'Mali', 'ml', 'Afrika', 12.6392, -8.0029, 'XOF', 'CFA ', 17.5, ['Hamdallaye', 'ACI 2000']],
+  ['ne', 'Niamey', 'Nijer', 'ne', 'Afrika', 13.5116, 2.1254, 'XOF', 'CFA ', 17.5, ['Plateau', 'Yantala']],
+  ['bf', 'Ouagadougou', 'Burkina Faso', 'bf', 'Afrika', 12.3714, -1.5197, 'XOF', 'CFA ', 17.5, ['Ouaga 2000', 'Zone du Bois']],
+  ['td', 'N’Djamena', 'Çad', 'td', 'Afrika', 12.1348, 15.0557, 'XAF', 'CFA ', 17.5, ['Klémat', 'Moursal']],
+  ['mr', 'Nuakşot', 'Moritanya', 'mr', 'Afrika', 18.0735, -15.9582, 'MRU', 'UM ', 1.15, ['Tevragh-Zeina', 'Ksar']],
+  ['gm', 'Banjul', 'Gambiya', 'gm', 'Afrika', 13.4549, -16.579, 'GMD', 'D', 2.0, ['Kololi', 'Senegambia']],
+  ['gn', 'Konakri', 'Gine', 'gn', 'Afrika', 9.6412, -13.5784, 'GNF', 'FG', 248, ['Kaloum', 'Kipé']],
+  ['gw', 'Bissau', 'Gine-Bissau', 'gw', 'Afrika', 11.8817, -15.6178, 'XOF', 'CFA ', 17.5, ['Bissau Velho', 'Bairro Militar']],
+  ['sl', 'Freetown', 'Sierra Leone', 'sl', 'Afrika', 8.4657, -13.2317, 'SLE', 'Le', 0.65, ['Aberdeen', 'Lumley']],
+  ['lr', 'Monrovia', 'Liberya', 'lr', 'Afrika', 6.3156, -10.8074, 'LRD', 'L$', 5.5, ['Sinkor', 'Mamba Point']],
+  ['tg', 'Lomé', 'Togo', 'tg', 'Afrika', 6.1319, 1.2228, 'XOF', 'CFA ', 17.5, ['Tokoin', 'Bè']],
+  ['bj', 'Cotonou', 'Benin', 'bj', 'Afrika', 6.3703, 2.3912, 'XOF', 'CFA ', 17.5, ['Haie Vive', 'Ganhi']],
+  ['cg', 'Brazzaville', 'Kongo Cumhuriyeti', 'cg', 'Afrika', -4.2634, 15.2429, 'XAF', 'CFA ', 17.5, ['Poto-Poto', 'Bacongo']],
+  ['cd', 'Kinşasa', 'Kongo DC', 'cd', 'Afrika', -4.4419, 15.2663, 'CDF', 'FC', 81, ['Gombe', 'Ngaliema']],
+  ['ga', 'Libreville', 'Gabon', 'ga', 'Afrika', 0.4162, 9.4673, 'XAF', 'CFA ', 17.5, ['Louis', 'Sablière']],
+  ['gq', 'Malabo', 'Ekvator Ginesi', 'gq', 'Afrika', 3.7504, 8.7371, 'XAF', 'CFA ', 17.5, ['Malabo II', 'Ela Nguema']],
+  ['cf', 'Bangui', 'Orta Afrika Cumhuriyeti', 'cf', 'Afrika', 4.3947, 18.5582, 'XAF', 'CFA ', 17.5, ['Centre', 'Sica']],
+  ['bi', 'Gitega', 'Burundi', 'bi', 'Afrika', -3.4264, 29.9306, 'BIF', 'FBu', 84, ['Gitega Merkez', 'Bujumbura']],
+  ['mw', 'Lilongwe', 'Malavi', 'mw', 'Afrika', -13.9626, 33.7741, 'MWK', 'MK', 50, ['Area 10', 'City Centre']],
+  ['sz', 'Mbabane', 'Esvatini', 'sz', 'Afrika', -26.3054, 31.1367, 'SZL', 'E', 0.52, ['Mbabane', 'Ezulwini']],
+  ['ls', 'Maseru', 'Lesotho', 'ls', 'Afrika', -29.3167, 27.4833, 'LSL', 'L', 0.52, ['Maseru West', 'Pioneer']],
+  ['cv', 'Praia', 'Yeşil Burun Adaları', 'cv', 'Afrika', 14.933, -23.5133, 'CVE', 'Esc', 2.95, ['Plateau', 'Achada']],
+  ['km', 'Moroni', 'Komorlar', 'km', 'Afrika', -11.7172, 43.2473, 'KMF', 'CF', 13.2, ['Médina', 'Volovolo']],
+  ['st', 'São Tomé', 'São Tomé ve Príncipe', 'st', 'Afrika', 0.3365, 6.7273, 'STN', 'Db', 0.65, ['Água Grande', 'Riboque']],
+  ['sc', 'Victoria', 'Seyşeller', 'sc', 'Afrika', -4.6191, 55.4513, 'SCR', '₨', 0.39, ['Victoria', 'Beau Vallon']],
+
+  // ================= OKYANUSYA =================
+  ['au', 'Sidney', 'Avustralya', 'au', 'Okyanusya', -33.8688, 151.2093, 'AUD', 'A$', 0.044, ['Surry Hills', 'CBD', 'Bondi', 'Newtown'], '22–30 dk', 33, true],
+  ['nz', 'Auckland', 'Yeni Zelanda', 'nz', 'Okyanusya', -36.8485, 174.7633, 'NZD', 'NZ$', 0.048, ['Ponsonby', 'CBD', 'Parnell'], '22–30 dk', 22],
+  ['fj', 'Suva', 'Fiji', 'fj', 'Okyanusya', -18.1416, 178.4419, 'FJD', 'FJ$', 0.065, ['Suva Central', 'Flagstaff']],
+  ['pg', 'Port Moresby', 'Papua Yeni Gine', 'pg', 'Okyanusya', -9.4438, 147.1803, 'PGK', 'K', 0.115, ['Waigani', 'Boroko']],
+  ['ws', 'Apia', 'Samoa', 'ws', 'Okyanusya', -13.8507, -171.7514, 'WST', 'T', 0.08, ['Apia Central', 'Vaitele']],
+  ['to', 'Nuku’alofa', 'Tonga', 'to', 'Okyanusya', -21.1393, -175.2049, 'TOP', 'T$', 0.068, ['Kolofo’ou', 'Ma’ufanga']],
+  ['vu', 'Port Vila', 'Vanuatu', 'vu', 'Okyanusya', -17.7333, 168.3273, 'VUV', 'VT', 3.45, ['Port Vila', 'Nambatu']],
+  ['sb', 'Honiara', 'Solomon Adaları', 'sb', 'Okyanusya', -9.4456, 159.9729, 'SBD', 'SI$', 0.24, ['Point Cruz', 'Kukum']],
+  ['fm', 'Palikir', 'Mikronezya', 'fm', 'Okyanusya', 6.9248, 158.1611, 'USD', '$', 0.029, ['Palikir', 'Kolonia']],
+  ['pw', 'Ngerulmud', 'Palau', 'pw', 'Okyanusya', 7.5004, 134.6242, 'USD', '$', 0.029, ['Koror', 'Melekeok']],
+  ['mh', 'Majuro', 'Marshall Adaları', 'mh', 'Okyanusya', 7.1164, 171.1858, 'USD', '$', 0.029, ['Delap', 'Uliga']],
+  ['ki', 'Tarawa', 'Kiribati', 'ki', 'Okyanusya', 1.3382, 173.0176, 'AUD', 'A$', 0.044, ['Bairiki', 'Betio']],
+  ['nr', 'Yaren', 'Nauru', 'nr', 'Okyanusya', -0.5477, 166.9209, 'AUD', 'A$', 0.044, ['Yaren', 'Aiwo']],
+  ['tv', 'Funafuti', 'Tuvalu', 'tv', 'Okyanusya', -8.5243, 179.1942, 'AUD', 'A$', 0.044, ['Vaiaku', 'Fongafale']],
+];
+
+export const ALL_COUNTRY_HUBS: CityHub[] = RAW_COUNTRIES.map(
+  ([
+    id,
+    name,
+    country,
+    countryCode,
+    continent,
+    lat,
+    lng,
+    currencyCode,
+    currencySymbol,
+    rateToTry,
+    neighborhoods,
+    avgDelivery = '25–35 dk',
+    kitchenCount = 14,
+    isFlagship = false,
+  ]) => ({
+    id,
+    name,
+    country,
+    countryCode,
+    continent,
+    districtLabel: neighborhoods.slice(0, 3).join(' · '),
+    neighborhoods,
+    currencyCode,
+    currencySymbol,
+    rateToTry,
+    avgDelivery,
+    freeDeliveryThresholdTry: 750,
+    deliveryFeeTry: 55,
+    kitchenCount,
+    center: { lat, lng },
+    isFlagship,
+  })
+);
+
+export const FLAGSHIP_HUB_IDS = [
+  'istanbul',
+  'tokyo',
+  'napoli',
+  'paris',
+  'bangkok',
+  'newyork',
+] as const;
+
+export const FEATURED_GLOBAL_HUBS: CityHub[] = ALL_COUNTRY_HUBS.filter(
+  (hub) => hub.isFlagship
+);
+
+export const COUNTRY_HUBS_BY_CONTINENT: Record<ContinentId, CityHub[]> = {
+  Avrupa: ALL_COUNTRY_HUBS.filter((h) => h.continent === 'Avrupa').sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+  Asya: ALL_COUNTRY_HUBS.filter((h) => h.continent === 'Asya').sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+  'Kuzey Amerika': ALL_COUNTRY_HUBS.filter(
+    (h) => h.continent === 'Kuzey Amerika'
+  ).sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+  'Güney Amerika': ALL_COUNTRY_HUBS.filter(
+    (h) => h.continent === 'Güney Amerika'
+  ).sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+  Afrika: ALL_COUNTRY_HUBS.filter((h) => h.continent === 'Afrika').sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+  Okyanusya: ALL_COUNTRY_HUBS.filter((h) => h.continent === 'Okyanusya').sort(
+    (a, b) => Number(Boolean(b.isFlagship)) - Number(Boolean(a.isFlagship)) || a.country.localeCompare(b.country, 'tr')
+  ),
+};
+
+export function findCountryHub(cityId: string): CityHub | undefined {
+  return ALL_COUNTRY_HUBS.find((h) => h.id === cityId);
+}

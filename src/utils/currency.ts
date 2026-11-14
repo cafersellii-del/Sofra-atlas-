@@ -16,9 +16,12 @@ export function formatPrice(
   }
 
   const converted = amountTry * hub.rateToTry;
-  if (hub.currencyCode === 'JPY' || hub.currencyCode === 'THB') {
+  if (hub.rateToTry >= 10) {
     const rounded = Math.round(converted / 10) * 10;
     return `${hub.currencySymbol}${rounded.toLocaleString('tr-TR')}`;
+  }
+  if (hub.rateToTry >= 1) {
+    return `${hub.currencySymbol}${Math.round(converted).toLocaleString('tr-TR')}`;
   }
 
   return `${hub.currencySymbol}${converted.toFixed(2).replace('.', ',')}`;

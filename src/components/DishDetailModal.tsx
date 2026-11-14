@@ -174,7 +174,7 @@ export function DishDetailModal({
                       onClick={() => setSelectedPortionId(portion.id)}
                       className={`w-full flex items-center justify-between px-4 py-3 min-h-[44px] rounded-lg border text-sm transition-colors cursor-pointer ${
                         selected
-                          ? 'border-[#1B4332] bg-[#FAF9F7] text-[#141413] font-medium'
+                          ? 'border-[#D9043D] bg-[#FAF9F7] text-[#141413] font-medium'
                           : 'border-[#E6E4DF] bg-white text-[#575550] hover:border-[#141413]/30'
                       }`}
                     >
@@ -208,7 +208,7 @@ export function DishDetailModal({
                         key={extra.id}
                         className={`flex items-center justify-between px-4 py-2.5 min-h-[42px] rounded-lg border text-sm cursor-pointer transition-colors ${
                           checked
-                            ? 'border-[#1B4332] bg-[#FAF9F7] text-[#141413]'
+                            ? 'border-[#D9043D] bg-[#FAF9F7] text-[#141413]'
                             : 'border-[#E6E4DF] bg-white text-[#575550]'
                         }`}
                       >
@@ -217,7 +217,7 @@ export function DishDetailModal({
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleExtra(extra.id)}
-                            className="w-4 h-4 accent-[#1B4332]"
+                            className="w-4 h-4 accent-[#D9043D]"
                           />
                           <span>{extra.label}</span>
                         </span>
@@ -277,7 +277,7 @@ export function DishDetailModal({
             <button
               type="button"
               onClick={handleSubmit}
-              className="flex-1 min-h-[44px] px-5 py-2.5 rounded-lg bg-[#1B4332] text-white text-sm font-medium hover:bg-[#143326] transition-colors flex items-center justify-between gap-3 cursor-pointer"
+              className="flex-1 min-h-[44px] px-5 py-2.5 rounded-lg bg-[#D9043D] text-white text-sm font-medium hover:bg-[#B80032] transition-colors flex items-center justify-between gap-3 cursor-pointer"
             >
               <span>Sepete Ekle</span>
               <span className="font-mono tabular-nums">

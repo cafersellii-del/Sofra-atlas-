@@ -1,4 +1,14 @@
-export function CraftsmanshipSection() {
+interface CraftsmanshipSectionProps {
+  onOpenRestaurantPortal: () => void;
+  onOpenExtensionStudio: () => void;
+  registeredCount: number;
+}
+
+export function CraftsmanshipSection({
+  onOpenRestaurantPortal,
+  onOpenExtensionStudio,
+  registeredCount,
+}: CraftsmanshipSectionProps) {
   const pillars = [
     {
       index: '01.',
@@ -23,22 +33,41 @@ export function CraftsmanshipSection() {
       className="border-t border-[#E6E4DF] bg-white py-16"
     >
       <div className="max-w-[1280px] mx-auto px-6">
-        <div className="max-w-2xl mb-12">
-          <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
-            Küresel Teslimat Standardı
-          </p>
-          <h2
-            className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
-            style={{ textWrap: 'balance' }}
-          >
-            Restoran masası kalitesini şehirler arası standartla koruyoruz.
-          </h2>
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+          <div className="max-w-2xl">
+            <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
+              Küresel Teslimat Standardı
+            </p>
+            <h2
+              className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
+              style={{ textWrap: 'balance' }}
+            >
+              Restoran masası kalitesini şehirler arası standartla koruyoruz.
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 self-start md:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={onOpenExtensionStudio}
+              className="px-4 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[#141413] text-sm font-medium hover:border-[#D9043D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Web Sitesi Uzantısı
+            </button>
+            <button
+              type="button"
+              onClick={onOpenRestaurantPortal}
+              className="px-5 py-2.5 min-h-[42px] rounded-lg border border-[#D9043D] text-[#D9043D] text-sm font-medium hover:bg-[#D9043D] hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              Restoran Üyeliği Oluştur{registeredCount > 0 ? ` (${registeredCount} Üye)` : ''}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
           {pillars.map((pillar) => (
             <div key={pillar.index} className="pt-5 border-t border-[#E6E4DF]">
-              <p className="font-mono text-xs font-medium text-[#1B4332] mb-2">
+              <p className="font-mono text-xs font-medium text-[#D9043D] mb-2">
                 {pillar.index}
               </p>
               <h3 className="font-display text-lg font-semibold text-[#141413] mb-2.5">

@@ -18,7 +18,7 @@ export function DishImage({ src, alt, title, className = '' }: DishImageProps) {
         role="img"
         aria-label={alt}
       >
-        <Utensils className="w-7 h-7 mb-2 text-[#1B4332]/70" strokeWidth={1.5} />
+        <Utensils className="w-7 h-7 mb-2 text-[#D9043D]/70" strokeWidth={1.5} />
         <span className="text-xs font-medium tracking-tight text-[#141413]/80 line-clamp-2">
           {title}
         </span>

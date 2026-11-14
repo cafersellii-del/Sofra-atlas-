@@ -1,0 +1,531 @@
+{
+  "entities": {
+    "Restaurant": {
+      "title": "Restaurant",
+      "description": "Public storefront profile for a registered partner restaurant.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "cityId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "cityName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "district": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "cuisineCategory": {
+          "type": "string",
+          "enum": [
+            "Anadolu & Akdeniz",
+            "Uzak Doğu",
+            "Avrupa Klasikleri",
+            "Sokak Lezzetleri",
+            "Tatlı & Pastane"
+          ]
+        },
+        "avgPrepMinutes": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 30
+        },
+        "tagline": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "cityId",
+        "cityName",
+        "district",
+        "cuisineCategory",
+        "avgPrepMinutes",
+        "tagline",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RestaurantPrivateContact": {
+      "title": "RestaurantPrivateContact",
+      "description": "Isolated PII and contact details for a registered restaurant owner.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "contactEmail": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "contactPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "streetAddress": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "taxId": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 30
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "contactEmail",
+        "contactPhone",
+        "streetAddress",
+        "taxId",
+        "updatedAt"
+      ]
+    },
+    "PartnerDish": {
+      "title": "PartnerDish",
+      "description": "Menu dish published by a registered partner restaurant.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "restaurantId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "restaurantName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "cityId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "cityName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "district": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 90
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Anadolu & Akdeniz",
+            "Uzak Doğu",
+            "Avrupa Klasikleri",
+            "Sokak Lezzetleri",
+            "Tatlı & Pastane"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 240
+        },
+        "story": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 400
+        },
+        "ingredients": {
+          "type": "array"
+        },
+        "priceTry": {
+          "type": "number"
+        },
+        "prepMinutes": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 30
+        },
+        "calories": {
+          "type": "number"
+        },
+        "isVegetarian": {
+          "type": "boolean"
+        },
+        "isSpicy": {
+          "type": "boolean"
+        },
+        "isChefSignature": {
+          "type": "boolean"
+        },
+        "imagePreset": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "isPublished": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "restaurantId",
+        "restaurantName",
+        "cityId",
+        "cityName",
+        "district",
+        "name",
+        "category",
+        "description",
+        "story",
+        "ingredients",
+        "priceTry",
+        "prepMinutes",
+        "calories",
+        "isVegetarian",
+        "isSpicy",
+        "isChefSignature",
+        "imagePreset",
+        "isPublished",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized platform administrator record.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "note": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "note", "createdAt", "updatedAt"]
+    },
+    "CustomerOrder": {
+      "title": "CustomerOrder",
+      "description": "Persisted customer food order with verified online payment metadata.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderNumber": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 32
+        },
+        "cityId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "cityName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "neighborhood": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "address": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "customerPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30
+        },
+        "restaurantName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["card", "digital_wallet", "cash_on_delivery"]
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["paid", "pending_cod", "refunded"]
+        },
+        "gatewayLabel": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "transactionId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 64
+        },
+        "authCode": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24
+        },
+        "cardBrand": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 24
+        },
+        "cardLast4": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 4
+        },
+        "refundId": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 64
+        },
+        "deliveryPreferences": {
+          "type": "array"
+        },
+        "itemsSummary": {
+          "type": "array"
+        },
+        "subtotalTry": {
+          "type": "number"
+        },
+        "discountTry": {
+          "type": "number"
+        },
+        "deliveryFeeTry": {
+          "type": "number"
+        },
+        "totalTry": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["received", "preparing", "on_the_way", "delivered"]
+        },
+        "estimatedArrival": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "courierName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "orderNumber",
+        "cityId",
+        "cityName",
+        "neighborhood",
+        "address",
+        "customerName",
+        "customerPhone",
+        "restaurantName",
+        "paymentMethod",
+        "paymentStatus",
+        "gatewayLabel",
+        "transactionId",
+        "authCode",
+        "cardBrand",
+        "cardLast4",
+        "refundId",
+        "deliveryPreferences",
+        "itemsSummary",
+        "subtotalTry",
+        "discountTry",
+        "deliveryFeeTry",
+        "totalTry",
+        "status",
+        "estimatedArrival",
+        "courierName",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SavedCard": {
+      "title": "SavedCard",
+      "description": "Tokenized non-sensitive payment card summary (last 4 digits and brand only) owned by a customer.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "holderName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "brand": {
+          "type": "string",
+          "enum": ["Troy", "Visa", "Mastercard", "Amex"]
+        },
+        "last4": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 4,
+          "pattern": "^[0-9]{4}$"
+        },
+        "expiry": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^(0[1-9]|1[0-2])/[0-9]{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "label",
+        "holderName",
+        "brand",
+        "last4",
+        "expiry",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/restaurants/{restaurantId}": {
+      "schema": { "$ref": "#/entities/Restaurant" },
+      "description": "Public profile documents for registered partner restaurants."
+    },
+    "/restaurants/{restaurantId}/private/contact": {
+      "schema": { "$ref": "#/entities/RestaurantPrivateContact" },
+      "description": "Owner-only private contact and tax information for registered restaurants."
+    },
+    "/dishes/{dishId}": {
+      "schema": { "$ref": "#/entities/PartnerDish" },
+      "description": "Dishes published by registered partner restaurants."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminUser" },
+      "description": "Authorized platform administrators managed by bootstrapped admin."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/CustomerOrder" },
+      "description": "Customer orders and online payment transaction records."
+    },
+    "/users/{userId}/savedCards/{cardId}": {
+      "schema": { "$ref": "#/entities/SavedCard" },
+      "description": "Owner-only tokenized card summaries (last4, brand, expiry) for faster checkout."
+    }
+  }
+}

@@ -1,12 +1,21 @@
-import { CITY_HUBS } from '../data/catalog';
+import { CITY_HUBS, FEATURED_GLOBAL_HUBS } from '../data/catalog';
 import type { CityId } from '../types/food';
 
 interface FooterProps {
   onSelectCity: (cityId: CityId) => void;
   onOpenOrders: () => void;
+  onOpenRestaurantPortal: () => void;
+  onOpenExtensionStudio: () => void;
+  onOpenAdminPanel: () => void;
 }
 
-export function Footer({ onSelectCity, onOpenOrders }: FooterProps) {
+export function Footer({
+  onSelectCity,
+  onOpenOrders,
+  onOpenRestaurantPortal,
+  onOpenExtensionStudio,
+  onOpenAdminPanel,
+}: FooterProps) {
   return (
     <footer className="border-t border-[#E6E4DF] bg-[#FAF9F7] py-12">
       <div className="max-w-[1280px] mx-auto px-6">
@@ -19,24 +28,25 @@ export function Footer({ onSelectCity, onOpenOrders }: FooterProps) {
               Sofra Atlas
             </a>
             <p className="text-sm text-[#575550] mt-3 max-w-sm leading-relaxed">
-              Altı dünya başkentinde yerel şef mutfaklarını tek bir yemek siparişi
-              deneyiminde buluşturan küresel gastronomi platformu.
+              6 kıtada {CITY_HUBS.length} ülkeden yerel şef mutfaklarını tek
+              bir online yemek siparişi deneyiminde buluşturan küresel
+              gastronomi ağı.
             </p>
           </div>
 
           <div className="md:col-span-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#575550] mb-3">
-              Teslimat Şehirleri
+              Öne Çıkan Teslimat Ülkeleri
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {CITY_HUBS.map((hub) => (
+              {FEATURED_GLOBAL_HUBS.slice(0, 10).map((hub) => (
                 <a
                   key={hub.id}
-                  href="#menu-katalog"
+                  href="#restoranlar"
                   onClick={() => onSelectCity(hub.id)}
-                  className="text-sm text-[#141413] hover:text-[#1B4332] hover:underline underline-offset-4"
+                  className="text-sm text-[#141413] hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
-                  {hub.name}
+                  {hub.country} ({hub.name})
                 </a>
               ))}
             </div>
@@ -49,16 +59,24 @@ export function Footer({ onSelectCity, onOpenOrders }: FooterProps) {
             <ul className="space-y-2 text-sm text-[#141413]">
               <li>
                 <a
-                  href="#menu-katalog"
-                  className="hover:text-[#1B4332] hover:underline underline-offset-4"
+                  href="#harita"
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
-                  Menü Kataloğu
+                  Küresel Harita (Google Maps)
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#restoranlar"
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4"
+                >
+                  Restoranlar & Menüler
                 </a>
               </li>
               <li>
                 <a
                   href="#mutfak-standartlari"
-                  className="hover:text-[#1B4332] hover:underline underline-offset-4"
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
                   Teslimat Standardı
                 </a>
@@ -67,9 +85,36 @@ export function Footer({ onSelectCity, onOpenOrders }: FooterProps) {
                 <button
                   type="button"
                   onClick={onOpenOrders}
-                  className="hover:text-[#1B4332] hover:underline underline-offset-4 cursor-pointer"
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
                 >
                   Sipariş Takibi
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenRestaurantPortal}
+                  className="text-[#D9043D] font-medium hover:underline underline-offset-4 cursor-pointer"
+                >
+                  Restoran Üyeliği
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenExtensionStudio}
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
+                >
+                  Web Sitesi Uzantısı
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenAdminPanel}
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
+                >
+                  Yönetici Paneli
                 </button>
               </li>
             </ul>
