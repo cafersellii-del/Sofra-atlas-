@@ -433,6 +433,24 @@ export const MAJOR_COUNTRY_PROVINCES: Record<string, ProvinceLocation[]> = {
       districts: ['Futian', 'Nanshan', 'Luohu'],
     },
   ],
+  // Hong Kong
+  hk: [
+    {
+      name: 'Hong Kong Adası',
+      center: { lat: 22.2819, lng: 114.1588 },
+      districts: ['Central', 'SoHo', 'Causeway Bay', 'Wan Chai', 'Admiralty', 'Sheung Wan'],
+    },
+    {
+      name: 'Kowloon',
+      center: { lat: 22.2988, lng: 114.1722 },
+      districts: ['Tsim Sha Tsui', 'Mong Kok', 'Yau Ma Tei', 'West Kowloon', 'Hung Hom'],
+    },
+    {
+      name: 'New Territories',
+      center: { lat: 22.3814, lng: 114.1886 },
+      districts: ['Sha Tin', 'Tsuen Wan', 'Sai Kung', 'Tai Po'],
+    },
+  ],
   // Hindistan
   in: [
     {

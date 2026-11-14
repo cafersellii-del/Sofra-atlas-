@@ -31,6 +31,7 @@ import type {
   RestaurantSortOption,
   RestaurantStorefront,
 } from '../types/food';
+import { useLanguage } from '../i18n/LanguageContext';
 import { formatPrice } from '../utils/currency';
 import { CountrySelectOptions } from './CountrySelectOptions';
 import { DishImage } from './DishImage';
@@ -113,10 +114,18 @@ export function RestaurantMarketplace({
   onResetFilters,
   onOpenRestaurantPortal,
 }: RestaurantMarketplaceProps) {
+  const { t } = useLanguage();
   const [viewMode, setViewMode] = useState<'restaurants' | 'dishes'>(
     'restaurants'
   );
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
+
+  const sortOptions: { id: RestaurantSortOption; label: string }[] = [
+    { id: 'recommended', label: t.sortRecommended },
+    { id: 'rating', label: t.sortRating },
+    { id: 'fastest', label: t.sortFastest },
+    { id: 'min_basket', label: t.sortMinBasket },
+  ];
 
   const provinces = useMemo(
     () => (selectedCity === 'all' ? [] : getProvincesForCountry(selectedCity)),
@@ -204,13 +213,13 @@ export function RestaurantMarketplace({
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
-              Yemeksepeti Tarzı Restoran Pazaryeri
+              {t.marketEyebrow}
             </p>
             <h2
               className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
               style={{ textWrap: 'balance' }}
             >
-              Şehrinizdeki açık restoranları ve menüleri keşfedin
+              {t.marketTitle}
             </h2>
           </div>
 
@@ -231,7 +240,7 @@ export function RestaurantMarketplace({
                 }`}
               >
                 <Store className="w-3.5 h-3.5" />
-                <span>Restoranlar ({restaurants.length})</span>
+                <span>{t.restaurantsTab} ({restaurants.length})</span>
               </button>
               <button
                 type="button"
@@ -243,7 +252,7 @@ export function RestaurantMarketplace({
                 }`}
               >
                 <UtensilsCrossed className="w-3.5 h-3.5" />
-                <span>Tüm Yemekler ({dishes.length})</span>
+                <span>{t.dishesTab} ({dishes.length})</span>
               </button>
             </div>
 
@@ -273,7 +282,7 @@ export function RestaurantMarketplace({
                     : 'text-[#575550] hover:text-[#141413]'
                 }`}
               >
-                Yerel Kur
+                {t.localCurrencyBtn}
               </button>
             </div>
           </div>
@@ -295,7 +304,7 @@ export function RestaurantMarketplace({
                     : 'bg-white border border-[#E6E4DF] text-[#575550] hover:text-[#141413]'
                 }`}
               >
-                Tüm Dünya ({CITY_HUBS.length})
+                {t.allWorldBtn} ({CITY_HUBS.length})
               </button>
               {FEATURED_GLOBAL_HUBS.slice(0, 6).map((hub) => (
                 <button
@@ -319,8 +328,8 @@ export function RestaurantMarketplace({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Restoran, yemek, il veya ilçe ara..."
-                aria-label="Restoran veya yemek ara"
+                placeholder={t.searchPlaceholder}
+                aria-label={t.searchPlaceholder}
                 className="w-full pl-9 pr-8 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-sm text-[#141413] placeholder:text-[#8A8780] focus:border-[#D9043D]"
               />
               {searchQuery && (
@@ -347,7 +356,7 @@ export function RestaurantMarketplace({
               >
                 <CountrySelectOptions
                   includeAllOption
-                  allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                  allLabel={`${t.allCountries} (${CITY_HUBS.length})`}
                 />
               </select>
             </div>
@@ -418,7 +427,7 @@ export function RestaurantMarketplace({
                 Sıralama
               </p>
               <div className="space-y-1.5">
-                {SORT_OPTIONS.map((opt) => (
+                {sortOptions.map((opt) => (
                   <label
                     key={opt.id}
                     className="flex items-center gap-2.5 py-1 text-sm text-[#141413] cursor-pointer"
@@ -449,7 +458,7 @@ export function RestaurantMarketplace({
                     onChange={onToggleFreeDelivery}
                     className="w-4 h-4 accent-[#D9043D]"
                   />
-                  <span>Ücretsiz Teslimat</span>
+                  <span>{t.freeDeliveryFilter}</span>
                 </label>
                 <label className="flex items-center gap-2.5 text-sm text-[#141413] cursor-pointer">
                   <input
@@ -458,7 +467,7 @@ export function RestaurantMarketplace({
                     onChange={onToggleCampaign}
                     className="w-4 h-4 accent-[#D9043D]"
                   />
-                  <span>ATLAS15 İndirimli</span>
+                  <span>{t.campaignFilter}</span>
                 </label>
                 <label className="flex items-center gap-2.5 text-sm text-[#141413] cursor-pointer">
                   <input
@@ -467,7 +476,7 @@ export function RestaurantMarketplace({
                     onChange={onToggleVegetarian}
                     className="w-4 h-4 accent-[#D9043D]"
                   />
-                  <span>Vejetaryen Seçenekli</span>
+                  <span>{t.vegFilter}</span>
                 </label>
                 <label className="flex items-center gap-2.5 text-sm text-[#141413] cursor-pointer">
                   <input
@@ -476,7 +485,7 @@ export function RestaurantMarketplace({
                     onChange={onTogglePartnerOnly}
                     className="w-4 h-4 accent-[#D9043D]"
                   />
-                  <span>Sadece Üye Restoranlar</span>
+                  <span>{t.partnerFilter}</span>
                 </label>
               </div>
             </div>
@@ -583,8 +592,8 @@ export function RestaurantMarketplace({
                   {restaurants.map((rest) => {
                     const deliveryLabel =
                       rest.deliveryFeeTry === 0
-                        ? 'Ücretsiz Getirme'
-                        : `Getirme ${formatPrice(
+                        ? t.freeLabel
+                        : `${t.delivery} ${formatPrice(
                             rest.deliveryFeeTry,
                             rest.cityId,
                             currencyMode
@@ -669,7 +678,7 @@ export function RestaurantMarketplace({
                             </div>
 
                             <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#D9043D] whitespace-nowrap shrink-0">
-                              <span>Menüyü Aç ({rest.dishes.length})</span>
+                              <span>{t.openMenu} ({rest.dishes.length})</span>
                               <ArrowUpRight className="w-3.5 h-3.5" />
                             </span>
                           </div>
@@ -755,12 +764,12 @@ export function RestaurantMarketplace({
                             {isJustAdded ? (
                               <>
                                 <Check className="w-3.5 h-3.5" />
-                                <span>Eklendi</span>
+                                <span>{t.addedToCart}</span>
                               </>
                             ) : (
                               <>
                                 <Plus className="w-3.5 h-3.5" />
-                                <span>Sepete Ekle</span>
+                                <span>{t.addToCart}</span>
                               </>
                             )}
                           </button>

@@ -12,9 +12,11 @@ import {
   notifyQuotaExceededIfNeeded,
   usePlacesAutocomplete,
 } from '../lib/maps';
+import { useLanguage } from '../i18n/LanguageContext';
 import type { CityId } from '../types/food';
 import { CountrySelectOptions } from './CountrySelectOptions';
 import { DishImage } from './DishImage';
+import { LanguageSelector } from './LanguageSelector';
 
 interface HeroProps {
   selectedCity: CityId;
@@ -117,6 +119,7 @@ export function Hero({
   onSelectDistrict,
   onExploreRestaurants,
 }: HeroProps) {
+  const { t } = useLanguage();
   const activeHub =
     selectedCity === 'all'
       ? CITY_HUBS[0]
@@ -153,7 +156,7 @@ export function Hero({
 
   const locationSummary =
     selectedCity === 'all'
-      ? `Tüm Dünya (${CITY_HUBS.length} ülke)`
+      ? `${t.allWorldSummary} (${CITY_HUBS.length})`
       : [
           activeHub.country,
           selectedProvince !== 'all' ? selectedProvince : null,
@@ -170,7 +173,7 @@ export function Hero({
           <div className="lg:col-span-6 flex flex-col justify-between py-2">
             <div>
               <p className="text-xs font-medium tracking-wider uppercase text-[#575550] mb-4">
-                Küresel Teslimat Ağı · {CITY_HUBS.length} Ülke · 81 İl &amp; İlçeler
+                {t.heroEyebrow}
               </p>
 
               <h1
@@ -180,14 +183,11 @@ export function Hero({
                   textWrap: 'balance',
                 }}
               >
-                Ülke, il ve ilçeni seç, açık restoranlardan anında sipariş ver.
+                {t.heroHeadline}
               </h1>
 
               <p className="text-base text-[#575550] leading-relaxed max-w-xl mb-7">
-                Türkiye’nin 81 ili ve tüm ilçelerinden dünyanın 196 ülkesindeki
-                şehir ve semtlere kadar yerel mutfakların menülerini minimum
-                sepet, teslimat süresi ve canlı Google Maps rotasıyla
-                karşılaştırıp sipariş oluşturun.
+                {t.heroSubtitle}
               </p>
 
               {/* Yemeksepeti Delivery Address Search Box with Cascaded Country / Province / District */}
@@ -206,7 +206,7 @@ export function Hero({
                     >
                       <CountrySelectOptions
                         includeAllOption
-                        allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                        allLabel={`${t.allCountries} (${CITY_HUBS.length})`}
                       />
                     </select>
                   </div>
@@ -221,8 +221,8 @@ export function Hero({
                     >
                       <option value="all">
                         {selectedCity === 'all'
-                          ? 'İl / Şehir (Önce ülke)'
-                          : `Tüm İller / Şehirler (${provinces.length})`}
+                          ? t.provinceWait
+                          : `${t.allProvinces} (${provinces.length})`}
                       </option>
                       {provinces.map((prov) => (
                         <option key={prov.name} value={prov.name}>
@@ -244,8 +244,8 @@ export function Hero({
                     >
                       <option value="all">
                         {selectedProvince === 'all'
-                          ? 'İlçe / Semt (Önce il)'
-                          : `Tüm İlçeler (${districts.length})`}
+                          ? t.districtWait
+                          : `${t.allDistricts} (${districts.length})`}
                       </option>
                       {districts.map((dist) => (
                         <option key={dist} value={dist}>
@@ -275,8 +275,8 @@ export function Hero({
                         type="text"
                         value={deliveryAddress}
                         onChange={(e) => onChangeDeliveryAddress(e.target.value)}
-                        placeholder="Cadde, sokak veya açık teslimat adresinizi girin..."
-                        aria-label="Teslimat adresi"
+                        placeholder={t.addressPlaceholder}
+                        aria-label={t.addressPlaceholder}
                         className="w-full pl-10 pr-3 py-2.5 min-h-[44px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-sm text-[#141413] placeholder:text-[#8A8780] focus:border-[#D9043D]"
                       />
                     </div>
@@ -286,14 +286,14 @@ export function Hero({
                     type="submit"
                     className="inline-flex items-center justify-center gap-2 px-5 py-2.5 min-h-[44px] rounded-lg bg-[#D9043D] text-white text-sm font-semibold hover:bg-[#B80032] transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    <span>Restoranları Listele</span>
+                    <span>{t.exploreRestaurantsBtn}</span>
                     <ArrowRight className="w-4 h-4 shrink-0" />
                   </button>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#575550] px-1">
                   <span>
-                    Aktif Teslimat Bölgesi:{' '}
+                    {t.activeRegionLabel}:{' '}
                     <strong className="text-[#141413]">{locationSummary}</strong>
                     {deliveryAddress.trim() ? ` · ${deliveryAddress.trim()}` : ''}
                   </span>
@@ -302,16 +302,18 @@ export function Hero({
                     className="inline-flex items-center gap-1 font-medium text-[#D9043D] hover:underline whitespace-nowrap shrink-0"
                   >
                     <Navigation className="w-3.5 h-3.5" />
-                    <span>Haritada Seç</span>
+                    <span>{t.pickOnMap}</span>
                   </a>
                 </div>
+
+                <LanguageSelector variant="hero" />
               </form>
             </div>
 
             {/* Interactive global city quick-select */}
             <div id="sehirler" className="pt-5 border-t border-[#E6E4DF]">
               <p className="text-xs font-medium text-[#575550] mb-3">
-                Öne çıkan küresel gastronomi merkezlerine hızlı geçiş
+                {t.featuredHubsLabel}
               </p>
               <div className="flex flex-wrap gap-2">
                 {FEATURED_GLOBAL_HUBS.slice(0, 8).map((hub) => {
@@ -346,10 +348,10 @@ export function Hero({
               />
               <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 via-black/40 to-transparent text-white">
                 <p className="text-xs text-white/80 mb-1">
-                  Tek Restorandan Hızlı Teslimat · Canlı Kurye Takibi
+                  {t.heroCardBadge}
                 </p>
                 <p className="font-display text-lg font-medium leading-snug">
-                  Minimum sepet avantajı ve ATLAS15 ile ilk siparişte %15 indirim.
+                  {t.heroCardTitle}
                 </p>
               </div>
             </div>
@@ -360,26 +362,26 @@ export function Hero({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mt-10 pt-8 border-t border-[#E6E4DF]">
           <div>
             <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-              {CITY_HUBS.length} Ülke · 81 İl
+              {t.proofCountriesTitle}
             </p>
             <p className="text-xs text-[#575550] mt-1">
-              6 kıtada tüm ülkeler, şehirler ve ilçe bazlı teslimat ağı
+              {t.proofCountriesDesc}
             </p>
           </div>
           <div>
             <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-              Tek Sepet Modeli
+              {t.proofCartTitle}
             </p>
             <p className="text-xs text-[#575550] mt-1">
-              Her restoranın kendi menüsü, min. sepet tutarı ve teslimat ücreti
+              {t.proofCartDesc}
             </p>
           </div>
           <div>
             <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-              19–30 dk
+              {t.proofTimeTitle}
             </p>
             <p className="text-xs text-[#575550] mt-1">
-              Canlı Google Maps rotalı sıcak kurye teslimatı
+              {t.proofTimeDesc}
             </p>
           </div>
           <div>
@@ -387,7 +389,7 @@ export function Hero({
               ATLAS15
             </p>
             <p className="text-xs text-[#575550] mt-1">
-              Kampanyalı restoranlarda sepette anında %15 indirim
+              {t.proofPromoDesc}
             </p>
           </div>
         </div>

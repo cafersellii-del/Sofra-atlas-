@@ -20,6 +20,8 @@ import { ExtensionStudioModal } from './components/ExtensionStudioModal';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
+import { LiveSupportChatModal } from './components/LiveSupportChatModal';
+import { MemberAuthModal } from './components/MemberAuthModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
   type OrderStepNotification,
@@ -29,6 +31,7 @@ import { OrdersPanel } from './components/OrdersPanel';
 import { RestaurantMarketplace } from './components/RestaurantMarketplace';
 import { RestaurantMenuModal } from './components/RestaurantMenuModal';
 import { RestaurantPortalModal } from './components/RestaurantPortalModal';
+import { SupportStaffInboxModal } from './components/SupportStaffInbox';
 import { WorldMapSection } from './components/WorldMapSection';
 import {
   CITY_HUBS,
@@ -38,8 +41,14 @@ import {
   INITIAL_ORDERS,
   resolveImagePreset,
 } from './data/catalog';
+import {
+  getDistrictsForProvince,
+  getProvincesForCountry,
+} from './data/locations';
+import { registerOrderSupportMetadata } from './hooks/useSupportChat';
 import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { GOOGLE_MAPS_API_KEY } from './lib/maps';
+import { LanguageProvider } from './i18n/LanguageContext';
 import { refundOnlinePayment } from './utils/payment';
 import { sanitizeText, VALIDATION_BOUNDS } from './utils/validation';
 import type {
@@ -51,6 +60,7 @@ import type {
   Dish,
   DishExtra,
   DishPortion,
+  MemberProfile,
   Order,
   OrderStatus,
   PartnerDishRecord,
@@ -60,6 +70,7 @@ import type {
   RestaurantSortOption,
   RestaurantStorefront,
   SavedCardRecord,
+  SupportChatChannel,
 } from './types/food';
 
 const STATUS_SEQUENCE: OrderStatus[] = [
@@ -147,12 +158,21 @@ export default function App() {
     useState<PendingCartAddition | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
   const [focusedOrderId, setFocusedOrderId] = useState<string | null>(null);
   const [stepNotifications, setStepNotifications] = useState<
     OrderStepNotification[]
   >([]);
   const [isRestaurantPortalOpen, setIsRestaurantPortalOpen] = useState(false);
   const [isExtensionStudioOpen, setIsExtensionStudioOpen] = useState(false);
+  const [supportChatState, setSupportChatState] = useState<{
+    orderId: string;
+    channel: SupportChatChannel;
+  } | null>(null);
+  const [isStaffInboxOpen, setIsStaffInboxOpen] = useState(false);
+  const [staffInboxOrderId, setStaffInboxOrderId] = useState<string | null>(
+    null
+  );
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('yonetici') === '1';
@@ -167,7 +187,14 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
   const [authReady, setAuthReady] = useState(false);
+  const [memberProfile, setMemberProfile] = useState<MemberProfile | null>(null);
   const [savedCards, setSavedCards] = useState<SavedCardRecord[]>([]);
+  const autoProvisionedMemberUidRef = useRef<string | null>(null);
+  const backfilledMemberEmailUidRef = useRef<string | null>(null);
+  const selectedCityRef = useRef<CityId>(selectedCity);
+  const deliveryAddressRef = useRef<string>(deliveryAddress);
+  selectedCityRef.current = selectedCity;
+  deliveryAddressRef.current = deliveryAddress;
   const [activeRestaurants, setActiveRestaurants] = useState<
     RestaurantProfile[]
   >([]);
@@ -234,12 +261,134 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Subscribe to owner's saved tokenized cards and persisted Firestore orders when verified
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const baseUrl = window.location.origin + window.location.pathname;
+    const canonicalUrl =
+      selectedCity !== 'all'
+        ? `${baseUrl}?sehir=${encodeURIComponent(selectedCity)}`
+        : baseUrl;
+
+    let canonicalLink = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute('href', canonicalUrl);
+
+    const setMeta = (attrName: 'property' | 'name', attrVal: string, content: string) => {
+      let tag = document.querySelector<HTMLMetaElement>(`meta[${attrName}="${attrVal}"]`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute(attrName, attrVal);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+
+    const ogImageAbs = `${window.location.origin}/og-cover.jpg`;
+    setMeta('property', 'og:url', canonicalUrl);
+    setMeta('property', 'og:image', ogImageAbs);
+    setMeta('name', 'twitter:image', ogImageAbs);
+
+    const activeHub =
+      selectedCity !== 'all'
+        ? CITY_HUBS.find((h) => h.id === selectedCity)
+        : undefined;
+    document.title = activeHub
+      ? `${activeHub.country} (${activeHub.name}) Restoranları — Sofra Atlas`
+      : 'Sofra Atlas — Küresel Restoran ve Online Yemek Siparişi';
+  }, [selectedCity]);
+
+  // Subscribe to owner's member profile, saved tokenized cards, and persisted Firestore orders when verified
   useEffect(() => {
     if (!authReady || !currentUser || !currentUser.emailVerified) {
+      setMemberProfile(null);
       setSavedCards([]);
       return;
     }
+
+    const profilePath = `users/${currentUser.uid}`;
+    const unsubProfile = onSnapshot(
+      doc(db, 'users', currentUser.uid),
+      (snap) => {
+        if (!snap.exists()) {
+          setMemberProfile(null);
+          if (autoProvisionedMemberUidRef.current !== currentUser.uid) {
+            autoProvisionedMemberUidRef.current = currentUser.uid;
+            const rawCity = selectedCityRef.current;
+            const defaultCityId: Exclude<CityId, 'all'> =
+              rawCity === 'all' ? 'istanbul' : rawCity;
+            const provinces = getProvincesForCountry(defaultCityId);
+            const rawProvince = provinces[0]?.name ?? 'İstanbul';
+            const districts = getDistrictsForProvince(defaultCityId, rawProvince);
+            const rawDistrict = districts[0] ?? 'Merkez';
+            const rawName = sanitizeText(
+              currentUser.displayName ||
+                currentUser.email?.split('@')[0] ||
+                'Sofra Atlas Üyesi',
+              VALIDATION_BOUNDS.nameMax
+            );
+            const safeDisplayName =
+              rawName.length >= VALIDATION_BOUNDS.nameMin
+                ? rawName
+                : 'Sofra Atlas Üyesi';
+            const safeProvince =
+              sanitizeText(rawProvince, VALIDATION_BOUNDS.cityNameMax).length >= 2
+                ? sanitizeText(rawProvince, VALIDATION_BOUNDS.cityNameMax)
+                : 'Merkez';
+            const safeDistrict =
+              sanitizeText(rawDistrict, VALIDATION_BOUNDS.districtMax).length >= 2
+                ? sanitizeText(rawDistrict, VALIDATION_BOUNDS.districtMax)
+                : 'Merkez';
+
+            void setDoc(doc(db, 'users', currentUser.uid), {
+              ownerId: currentUser.uid,
+              displayName: safeDisplayName,
+              email: sanitizeText(
+                currentUser.email ?? '',
+                VALIDATION_BOUNDS.emailMax
+              ),
+              phone: '',
+              defaultCityId,
+              defaultProvince: safeProvince,
+              defaultDistrict: safeDistrict,
+              defaultAddress: sanitizeText(
+                deliveryAddressRef.current || '',
+                VALIDATION_BOUNDS.addressMax
+              ),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }).catch((error) => {
+              handleFirestoreError(error, OperationType.CREATE, profilePath);
+            });
+          }
+          return;
+        }
+        const data = snap.data() as MemberProfile;
+        setMemberProfile(data);
+        if (data.defaultAddress && !deliveryAddressRef.current.trim()) {
+          setDeliveryAddress(data.defaultAddress);
+        }
+        if (
+          data.email === undefined &&
+          currentUser.email &&
+          backfilledMemberEmailUidRef.current !== currentUser.uid
+        ) {
+          backfilledMemberEmailUidRef.current = currentUser.uid;
+          void updateDoc(doc(db, 'users', currentUser.uid), {
+            email: sanitizeText(currentUser.email, VALIDATION_BOUNDS.emailMax),
+            updatedAt: serverTimestamp(),
+          }).catch((error) => {
+            handleFirestoreError(error, OperationType.UPDATE, profilePath);
+          });
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, profilePath);
+      }
+    );
 
     const cardsPath = `users/${currentUser.uid}/savedCards`;
     const cardsQuery = query(
@@ -370,6 +519,7 @@ export default function App() {
     );
 
     return () => {
+      unsubProfile();
       unsubCards();
       unsubOrders();
     };
@@ -862,6 +1012,53 @@ export default function App() {
     }
   };
 
+  const handleSaveMemberProfile = async (
+    profile: Omit<MemberProfile, 'ownerId'>
+  ) => {
+    if (!currentUser || !currentUser.emailVerified) return;
+    const path = `users/${currentUser.uid}`;
+    const payload = {
+      displayName: sanitizeText(profile.displayName, VALIDATION_BOUNDS.nameMax),
+      email: sanitizeText(
+        currentUser.email || profile.email || '',
+        VALIDATION_BOUNDS.emailMax
+      ),
+      phone: sanitizeText(profile.phone, VALIDATION_BOUNDS.phoneMax),
+      defaultCityId: profile.defaultCityId,
+      defaultProvince: sanitizeText(
+        profile.defaultProvince,
+        VALIDATION_BOUNDS.cityNameMax
+      ),
+      defaultDistrict: sanitizeText(
+        profile.defaultDistrict,
+        VALIDATION_BOUNDS.districtMax
+      ),
+      defaultAddress: sanitizeText(
+        profile.defaultAddress,
+        VALIDATION_BOUNDS.addressMax
+      ),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      if (memberProfile) {
+        await updateDoc(doc(db, 'users', currentUser.uid), payload);
+      } else {
+        await setDoc(doc(db, 'users', currentUser.uid), {
+          ownerId: currentUser.uid,
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(
+        error,
+        memberProfile ? OperationType.UPDATE : OperationType.CREATE,
+        path
+      );
+    }
+  };
+
   const handlePlaceOrder = (order: Order) => {
     const firestoreOrderId = `ord_${Date.now()}_${Math.random()
       .toString(36)
@@ -879,6 +1076,7 @@ export default function App() {
     setFocusedOrderId(orderWithDocId.id);
     setIsOrdersOpen(true);
     pushStepNotification(orderWithDocId);
+    void registerOrderSupportMetadata(orderWithDocId);
 
     if (currentUser && currentUser.emailVerified) {
       const restaurantName = sanitizeText(
@@ -947,12 +1145,14 @@ export default function App() {
     const target = orders.find((o) => o.id === orderId);
     if (!target) return;
     const nextStatus = getNextStatus(target.status);
+    const updatedTarget: Order = { ...target, status: nextStatus };
 
     setOrders((prev) =>
       prev.map((order) =>
-        order.id === orderId ? { ...order, status: nextStatus } : order
+        order.id === orderId ? updatedTarget : order
       )
     );
+    void registerOrderSupportMetadata(updatedTarget);
 
     if (
       target.firestoreId &&
@@ -1063,8 +1263,10 @@ export default function App() {
       <Header
         cartCount={totalCartCount}
         activeOrderCount={activeOrderCount}
+        currentUser={currentUser}
         onOpenCart={() => setIsCartOpen(true)}
         onOpenOrders={() => setIsOrdersOpen(true)}
+        onOpenMemberModal={() => setIsMemberModalOpen(true)}
         onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
       />
@@ -1147,8 +1349,10 @@ export default function App() {
 
       {!initialUrlParams.embed && (
         <Footer
+          isSignedIn={Boolean(currentUser)}
           onSelectCity={handleSelectCity}
           onOpenOrders={() => setIsOrdersOpen(true)}
+          onOpenMemberModal={() => setIsMemberModalOpen(true)}
           onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
           onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
           onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
@@ -1241,6 +1445,7 @@ export default function App() {
         initialDeliveryAddress={deliveryAddress}
         isMapsProviderActive={isMapsProviderActive}
         currentUser={currentUser}
+        memberProfile={memberProfile}
         savedCards={savedCards}
         onSaveCard={handleSaveCard}
         onDeleteSavedCard={handleDeleteSavedCard}
@@ -1249,6 +1454,27 @@ export default function App() {
         onRemoveItem={handleRemoveCartItem}
         onClearCart={() => setCartItems([])}
         onPlaceOrder={handlePlaceOrder}
+      />
+
+      <MemberAuthModal
+        isOpen={isMemberModalOpen}
+        currentUser={currentUser}
+        memberProfile={memberProfile}
+        activeOrderCount={activeOrderCount}
+        savedCardsCount={savedCards.length}
+        selectedCity={selectedCity}
+        selectedProvince={selectedProvince}
+        selectedDistrict={selectedDistrict}
+        deliveryAddress={deliveryAddress}
+        onSaveProfile={handleSaveMemberProfile}
+        onApplyLocation={(loc) => {
+          setSelectedCity(loc.cityId);
+          setSelectedProvince(loc.province);
+          setSelectedDistrict(loc.district);
+          if (loc.address) setDeliveryAddress(loc.address);
+        }}
+        onOpenOrders={() => setIsOrdersOpen(true)}
+        onClose={() => setIsMemberModalOpen(false)}
       />
 
       <OrdersPanel
@@ -1262,6 +1488,13 @@ export default function App() {
           setFocusedOrderId(null);
         }}
         onAdvanceStatus={handleAdvanceOrderStatus}
+        onOpenSupport={(order, channel = 'restaurant') =>
+          setSupportChatState({ orderId: order.id, channel })
+        }
+        onOpenStaffInbox={() => {
+          setStaffInboxOrderId(focusedOrderId);
+          setIsStaffInboxOpen(true);
+        }}
       />
 
       <OrderStepNotifications
@@ -1271,14 +1504,39 @@ export default function App() {
           setFocusedOrderId(orderId);
           setIsOrdersOpen(true);
         }}
+        onOpenSupport={(orderId) =>
+          setSupportChatState({ orderId, channel: 'courier' })
+        }
       />
 
       <OfflineIndicator />
 
       <RestaurantPortalModal
         isOpen={isRestaurantPortalOpen}
+        orders={orders}
         onClose={() => setIsRestaurantPortalOpen(false)}
         onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
+      />
+
+      <LiveSupportChatModal
+        order={
+          supportChatState
+            ? orders.find((o) => o.id === supportChatState.orderId) ?? null
+            : null
+        }
+        initialChannel={supportChatState?.channel ?? 'restaurant'}
+        onClose={() => setSupportChatState(null)}
+        onOpenStaffInbox={(orderId) => {
+          setStaffInboxOrderId(orderId);
+          setIsStaffInboxOpen(true);
+        }}
+      />
+
+      <SupportStaffInboxModal
+        isOpen={isStaffInboxOpen}
+        orders={orders}
+        initialOrderId={staffInboxOrderId}
+        onClose={() => setIsStaffInboxOpen(false)}
       />
 
       <ExtensionStudioModal
@@ -1300,6 +1558,12 @@ export default function App() {
     </div>
   );
 
+  const wrappedApp = (
+    <LanguageProvider selectedCity={selectedCity}>
+      {appContent}
+    </LanguageProvider>
+  );
+
   if (isMapsProviderActive) {
     return (
       <APIProvider
@@ -1307,10 +1571,10 @@ export default function App() {
         language="tr"
         libraries={['places', 'marker', 'routes']}
       >
-        {appContent}
+        {wrappedApp}
       </APIProvider>
     );
   }
 
-  return appContent;
+  return wrappedApp;
 }

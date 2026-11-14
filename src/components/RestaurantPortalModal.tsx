@@ -22,6 +22,7 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  MessageSquare,
   Plus,
   Store,
   Trash2,
@@ -47,11 +48,13 @@ import {
 import type {
   CityId,
   CuisineCategory,
+  Order,
   PartnerDishRecord,
   RestaurantPrivateContact,
   RestaurantProfile,
 } from '../types/food';
 import { CountrySelectOptions } from './CountrySelectOptions';
+import { SupportStaffInbox } from './SupportStaffInbox';
 import {
   parseIngredients,
   sanitizeText,
@@ -61,6 +64,7 @@ import { DishImage } from './DishImage';
 
 interface RestaurantPortalModalProps {
   isOpen: boolean;
+  orders?: Order[];
   onClose: () => void;
   onOpenExtensionStudio: () => void;
 }
@@ -71,6 +75,7 @@ const PARTNER_CATEGORIES = CUISINE_CATEGORIES.filter(
 
 export function RestaurantPortalModal({
   isOpen,
+  orders = [],
   onClose,
   onOpenExtensionStudio,
 }: RestaurantPortalModalProps) {
@@ -85,7 +90,7 @@ export function RestaurantPortalModal({
   const [myDishes, setMyDishes] = useState<PartnerDishRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'menu' | 'profile'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'profile' | 'support'>('menu');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -1041,6 +1046,21 @@ export function RestaurantPortalModal({
                   >
                     Restoran Bilgileri
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('support');
+                      setFormError('');
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      activeTab === 'support'
+                        ? 'bg-white text-[#D9043D] shadow-xs'
+                        : 'text-[#575550] hover:text-[#141413]'
+                    }`}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>Canlı Destek</span>
+                  </button>
                 </div>
 
                 {activeTab === 'menu' && (
@@ -1346,6 +1366,17 @@ export function RestaurantPortalModal({
                       ))}
                     </div>
                   )}
+                </div>
+              ) : activeTab === 'support' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-[#575550]">
+                    Müşterilerden gelen sipariş sorularını mutfak veya kurye rolüyle anlık yanıtlayın.
+                  </p>
+                  <SupportStaffInbox
+                    orders={orders}
+                    enabled={isOpen && activeTab === 'support'}
+                    compactHeightClass="h-[460px]"
+                  />
                 </div>
               ) : (
                 /* Tab 2: Edit Restaurant Profile & Private Contact */

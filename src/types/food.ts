@@ -202,6 +202,19 @@ export interface PaymentReceipt {
   refundId?: string;
 }
 
+export interface MemberProfile {
+  ownerId: string;
+  displayName: string;
+  email?: string;
+  phone: string;
+  defaultCityId: Exclude<CityId, 'all'>;
+  defaultProvince: string;
+  defaultDistrict: string;
+  defaultAddress: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
 export interface Order {
   id: string;
   firestoreId?: string;
@@ -233,3 +246,33 @@ export interface Order {
   estimatedArrival: string;
   courierName: string;
 }
+
+export type SupportChatChannel = 'restaurant' | 'courier';
+
+export type SupportSenderRole = 'customer' | 'restaurant' | 'courier';
+
+export interface SupportChatMessage {
+  id: string;
+  clientMessageId?: string;
+  orderId: string;
+  channel: SupportChatChannel;
+  senderRole: SupportSenderRole;
+  senderName: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface SupportThreadSummary {
+  orderId: string;
+  restaurantName: string;
+  courierName: string;
+  customerName: string;
+  cityName: string;
+  neighborhood: string;
+  orderStatus: OrderStatus;
+  lastMessageAt: string;
+  unreadForCustomer: number;
+  unreadForStaff: number;
+  messages: SupportChatMessage[];
+}
+

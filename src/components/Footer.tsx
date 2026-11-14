@@ -1,22 +1,30 @@
 import { CITY_HUBS, FEATURED_GLOBAL_HUBS } from '../data/catalog';
+import { useLanguage } from '../i18n/LanguageContext';
 import type { CityId } from '../types/food';
+import { LanguageSelector } from './LanguageSelector';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface FooterProps {
+  isSignedIn: boolean;
   onSelectCity: (cityId: CityId) => void;
   onOpenOrders: () => void;
+  onOpenMemberModal: () => void;
   onOpenRestaurantPortal: () => void;
   onOpenExtensionStudio: () => void;
   onOpenAdminPanel: () => void;
 }
 
 export function Footer({
+  isSignedIn,
   onSelectCity,
   onOpenOrders,
+  onOpenMemberModal,
   onOpenRestaurantPortal,
   onOpenExtensionStudio,
   onOpenAdminPanel,
 }: FooterProps) {
+  const { t } = useLanguage();
+
   return (
     <footer className="border-t border-[#E6E4DF] bg-[#FAF9F7] py-12">
       <div className="max-w-[1280px] mx-auto px-6">
@@ -29,18 +37,17 @@ export function Footer({
               Sofra Atlas
             </a>
             <p className="text-sm text-[#575550] mt-3 max-w-sm leading-relaxed">
-              6 kıtada {CITY_HUBS.length} ülkeden yerel şef mutfaklarını tek
-              bir online yemek siparişi deneyiminde buluşturan küresel
-              gastronomi ağı.
+              {t.heroSubtitle}
             </p>
             <div className="mt-4">
               <PWAInstallButton variant="footer" />
             </div>
+            <LanguageSelector variant="footer" />
           </div>
 
           <div className="md:col-span-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#575550] mb-3">
-              Öne Çıkan Teslimat Ülkeleri
+              {t.footerFeaturedTitle}
             </p>
             <div className="grid grid-cols-2 gap-2">
               {FEATURED_GLOBAL_HUBS.slice(0, 10).map((hub) => (
@@ -58,7 +65,7 @@ export function Footer({
 
           <div className="md:col-span-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#575550] mb-3">
-              Platform
+              {t.footerPlatformTitle}
             </p>
             <ul className="space-y-2 text-sm text-[#141413]">
               <li>
@@ -66,7 +73,7 @@ export function Footer({
                   href="#harita"
                   className="hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
-                  Küresel Harita (Google Maps)
+                  {t.footerMapLink}
                 </a>
               </li>
               <li>
@@ -74,7 +81,7 @@ export function Footer({
                   href="#restoranlar"
                   className="hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
-                  Restoranlar & Menüler
+                  {t.navRestaurants}
                 </a>
               </li>
               <li>
@@ -82,8 +89,17 @@ export function Footer({
                   href="#mutfak-standartlari"
                   className="hover:text-[#D9043D] hover:underline underline-offset-4"
                 >
-                  Teslimat Standardı
+                  {t.footerStandardsLink}
                 </a>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={onOpenMemberModal}
+                  className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
+                >
+                  {isSignedIn ? t.myAccount : t.memberLogin}
+                </button>
               </li>
               <li>
                 <button
@@ -91,7 +107,7 @@ export function Footer({
                   onClick={onOpenOrders}
                   className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
                 >
-                  Sipariş Takibi
+                  {t.footerOrdersLink}
                 </button>
               </li>
               <li>
@@ -100,7 +116,7 @@ export function Footer({
                   onClick={onOpenRestaurantPortal}
                   className="text-[#D9043D] font-medium hover:underline underline-offset-4 cursor-pointer"
                 >
-                  Restoran Üyeliği
+                  {t.navRestaurantPortal}
                 </button>
               </li>
               <li>
@@ -109,7 +125,7 @@ export function Footer({
                   onClick={onOpenExtensionStudio}
                   className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
                 >
-                  Web Sitesi Uzantısı
+                  {t.footerExtensionLink}
                 </button>
               </li>
               <li>
@@ -118,7 +134,7 @@ export function Footer({
                   onClick={onOpenAdminPanel}
                   className="hover:text-[#D9043D] hover:underline underline-offset-4 cursor-pointer"
                 >
-                  Yönetici Paneli
+                  {t.navAdmin}
                 </button>
               </li>
             </ul>
@@ -126,8 +142,8 @@ export function Footer({
         </div>
 
         <div className="pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-[#575550]">
-          <p>© 2026 Sofra Atlas. Tüm hakları saklıdır.</p>
-          <p>Ücretsiz teslimat ve yerel para birimi desteği seçili şehir merkezlerinde geçerlidir.</p>
+          <p>{t.footerRights} ({CITY_HUBS.length})</p>
+          <p>{t.footerNote}</p>
         </div>
       </div>
     </footer>

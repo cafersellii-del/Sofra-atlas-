@@ -1,3 +1,5 @@
+import { useLanguage } from '../i18n/LanguageContext';
+
 interface CraftsmanshipSectionProps {
   onOpenRestaurantPortal: () => void;
   onOpenExtensionStudio: () => void;
@@ -9,6 +11,8 @@ export function CraftsmanshipSection({
   onOpenExtensionStudio,
   registeredCount,
 }: CraftsmanshipSectionProps) {
+  const { t } = useLanguage();
+
   const pillars = [
     {
       index: '01.',
@@ -36,13 +40,13 @@ export function CraftsmanshipSection({
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div className="max-w-2xl">
             <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
-              Küresel Teslimat Standardı
+              {t.craftEyebrow}
             </p>
             <h2
               className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
               style={{ textWrap: 'balance' }}
             >
-              Restoran masası kalitesini şehirler arası standartla koruyoruz.
+              {t.craftTitle}
             </h2>
           </div>
 
@@ -52,14 +56,14 @@ export function CraftsmanshipSection({
               onClick={onOpenExtensionStudio}
               className="px-4 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[#141413] text-sm font-medium hover:border-[#D9043D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Web Sitesi Uzantısı
+              {t.craftExtensionBtn}
             </button>
             <button
               type="button"
               onClick={onOpenRestaurantPortal}
               className="px-5 py-2.5 min-h-[42px] rounded-lg border border-[#D9043D] text-[#D9043D] text-sm font-medium hover:bg-[#D9043D] hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              Restoran Üyeliği Oluştur{registeredCount > 0 ? ` (${registeredCount} Üye)` : ''}
+              {t.craftPartnerBtn}{registeredCount > 0 ? ` (${registeredCount})` : ''}
             </button>
           </div>
         </div>

@@ -214,6 +214,29 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidMemberProfile(data) {
+      return data.keys().hasAll([
+          'ownerId', 'displayName', 'email', 'phone', 'defaultCityId',
+          'defaultProvince', 'defaultDistrict', 'defaultAddress',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'displayName', 'email', 'phone', 'defaultCityId',
+          'defaultProvince', 'defaultDistrict', 'defaultAddress',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && isValidId(data.ownerId)
+        && data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 80
+        && data.email is string && data.email.size() <= 120
+        && data.phone is string && data.phone.size() <= 30
+        && isValidCityId(data.defaultCityId)
+        && data.defaultProvince is string && data.defaultProvince.size() >= 2 && data.defaultProvince.size() <= 60
+        && data.defaultDistrict is string && data.defaultDistrict.size() >= 2 && data.defaultDistrict.size() <= 60
+        && data.defaultAddress is string && data.defaultAddress.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     match /admins/{adminId} {
       allow get: if isVerifiedUser() && isValidId(adminId) && (
         adminId == request.auth.uid || isAdmin()
@@ -405,6 +428,44 @@ service cloud.firestore {
         );
 
       allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    match /users/{userId} {
+      allow get: if isVerifiedUser()
+        && isValidId(userId)
+        && (
+          (request.auth.uid == userId && (resource == null || existing().ownerId == request.auth.uid)) ||
+          isAdmin()
+        );
+      allow list: if isBootstrappedAdmin() || (
+        isVerifiedUser() && resource.data.ownerId == request.auth.uid
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidMemberProfile(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && existing().ownerId == request.auth.uid
+        && isValidMemberProfile(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'email', 'phone', 'defaultCityId', 'defaultProvince',
+          'defaultDistrict', 'defaultAddress', 'updatedAt'
+        ]);
+
+      allow delete: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && existing().ownerId == request.auth.uid;
     }
 
     match /users/{userId}/savedCards/{cardId} {

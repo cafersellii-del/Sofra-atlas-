@@ -500,6 +500,75 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "MemberProfile": {
+      "title": "MemberProfile",
+      "description": "Customer account and default delivery preferences readable by owner and platform administrators.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "defaultCityId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "defaultProvince": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "defaultDistrict": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "defaultAddress": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "displayName",
+        "email",
+        "phone",
+        "defaultCityId",
+        "defaultProvince",
+        "defaultDistrict",
+        "defaultAddress",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -522,6 +591,10 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/CustomerOrder" },
       "description": "Customer orders and online payment transaction records."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/MemberProfile" },
+      "description": "Owner-only customer member profile and saved delivery defaults."
     },
     "/users/{userId}/savedCards/{cardId}": {
       "schema": { "$ref": "#/entities/SavedCard" },

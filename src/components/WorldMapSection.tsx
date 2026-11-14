@@ -41,6 +41,7 @@ import {
   notifyQuotaExceededIfNeeded,
   usePlacesAutocomplete,
 } from '../lib/maps';
+import { useLanguage } from '../i18n/LanguageContext';
 import type { CityHub, CityId, ContinentId, RestaurantProfile } from '../types/food';
 import { CountrySelectOptions } from './CountrySelectOptions';
 
@@ -1035,6 +1036,7 @@ export function WorldMapSection({
   onFilterRestaurant,
   isMapsProviderActive,
 }: WorldMapSectionProps) {
+  const { t } = useLanguage();
   const [selectedContinent, setSelectedContinent] = useState<'all' | ContinentId>('all');
 
   const provinces = useMemo(
@@ -1056,13 +1058,13 @@ export function WorldMapSection({
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-6">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
-              Google Maps · Küresel Teslimat Ağı ({CITY_HUBS.length} Ülke · 81 İl &amp; İlçeler)
+              {t.mapEyebrow} ({CITY_HUBS.length})
             </p>
             <h2
               className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
               style={{ textWrap: 'balance' }}
             >
-              6 kıtada ülkeleri, illeri, ilçeleri ve teslimat rotasını haritada keşfedin
+              {t.mapTitle}
             </h2>
           </div>
 

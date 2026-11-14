@@ -1,4 +1,8 @@
-import { CONTINENTS, COUNTRY_HUBS_BY_CONTINENT } from '../data/countries';
+import {
+  ALL_COUNTRY_HUBS,
+  CONTINENTS,
+  COUNTRY_HUBS_BY_CONTINENT,
+} from '../data/countries';
 
 interface CountrySelectOptionsProps {
   includeAllOption?: boolean;
@@ -7,7 +11,7 @@ interface CountrySelectOptionsProps {
 
 export function CountrySelectOptions({
   includeAllOption = false,
-  allLabel = 'Tüm Dünya (196 Ülke)',
+  allLabel = `Tüm Dünya (${ALL_COUNTRY_HUBS.length} Ülke & Bölge)`,
 }: CountrySelectOptionsProps) {
   return (
     <>

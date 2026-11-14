@@ -22,9 +22,15 @@ import {
   ClipboardList,
   LayoutGrid,
   LogOut,
+  Mail,
+  MapPin,
+  MessageSquare,
+  Phone,
   Search,
   ShieldCheck,
   Trash2,
+  UserPlus,
+  Users,
   UtensilsCrossed,
   X,
 } from 'lucide-react';
@@ -40,6 +46,7 @@ import type {
   AdminUserRecord,
   CityId,
   ContinentId,
+  MemberProfile,
   Order,
   OrderStatus,
   PartnerDishRecord,
@@ -48,6 +55,7 @@ import type {
 } from '../types/food';
 import { sanitizeText, VALIDATION_BOUNDS } from '../utils/validation';
 import { CountrySelectOptions } from './CountrySelectOptions';
+import { SupportStaffInbox } from './SupportStaffInbox';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -57,7 +65,13 @@ interface AdminPanelModalProps {
   onRefundOrder?: (order: Order) => Promise<void> | void;
 }
 
-type AdminSection = 'overview' | 'restaurants' | 'dishes' | 'orders_admins';
+type AdminSection =
+  | 'overview'
+  | 'members'
+  | 'restaurants'
+  | 'dishes'
+  | 'orders_admins'
+  | 'support';
 
 const BOOTSTRAPPED_ADMIN_EMAIL = 'cafersellii@gmail.com';
 
@@ -67,6 +81,36 @@ const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   on_the_way: 'Kurye Yolda',
   delivered: 'Teslim Edildi',
 };
+
+function formatFirestoreDate(value: unknown): string {
+  if (!value) return '—';
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'toDate' in value &&
+    typeof (value as { toDate: () => Date }).toDate === 'function'
+  ) {
+    return (value as { toDate: () => Date }).toDate().toLocaleDateString(
+      'tr-TR',
+      {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }
+    );
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString('tr-TR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+  }
+  return '—';
+}
 
 export function AdminPanelModal({
   isOpen,
@@ -85,8 +129,14 @@ export function AdminPanelModal({
   const [restaurants, setRestaurants] = useState<RestaurantProfile[]>([]);
   const [dishes, setDishes] = useState<PartnerDishRecord[]>([]);
   const [admins, setAdmins] = useState<AdminUserRecord[]>([]);
+  const [members, setMembers] = useState<MemberProfile[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
 
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberCityFilter, setMemberCityFilter] = useState<CityId>('all');
+  const [memberLookupUid, setMemberLookupUid] = useState('');
+  const [memberLookupError, setMemberLookupError] = useState('');
   const [restSearch, setRestSearch] = useState('');
   const [restStatusFilter, setRestStatusFilter] = useState<
     'all' | 'active' | 'paused'
@@ -217,12 +267,78 @@ export function AdminPanelModal({
       }
     );
 
+    let unsubMembers: (() => void) | undefined;
+    if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+      setMembersLoading(true);
+      unsubMembers = onSnapshot(
+        collection(db, 'users'),
+        (snap) => {
+          setMembers(
+            snap.docs.map((d) => ({
+              ...(d.data() as MemberProfile),
+              ownerId: (d.data() as MemberProfile).ownerId || d.id,
+            }))
+          );
+          setMembersLoading(false);
+        },
+        (error) => {
+          setMembersLoading(false);
+          handleFirestoreError(error, OperationType.LIST, 'users');
+        }
+      );
+    } else {
+      setMembersLoading(false);
+    }
+
     return () => {
       unsubRest();
       unsubDishes();
       unsubAdmins();
+      if (unsubMembers) unsubMembers();
     };
   }, [isOpen, isAdminAuthorized, user]);
+
+  const isBootstrappedAdminUser = user?.email === BOOTSTRAPPED_ADMIN_EMAIL;
+
+  const memberOrderStats = useMemo(() => {
+    const map = new Map<string, { count: number; totalTry: number }>();
+    for (const order of orders) {
+      if (!order.ownerId) continue;
+      const prev = map.get(order.ownerId) ?? { count: 0, totalTry: 0 };
+      map.set(order.ownerId, {
+        count: prev.count + 1,
+        totalTry: prev.totalTry + order.totalTry,
+      });
+    }
+    return map;
+  }, [orders]);
+
+  const filteredMembers = useMemo(() => {
+    const q = memberSearch.trim().toLocaleLowerCase('tr');
+    return members.filter((m) => {
+      if (memberCityFilter !== 'all' && m.defaultCityId !== memberCityFilter) {
+        return false;
+      }
+      if (q) {
+        const hubCountry =
+          CITY_HUBS.find((h) => h.id === m.defaultCityId)?.country ?? '';
+        const text = [
+          m.displayName,
+          m.email ?? '',
+          m.phone,
+          m.ownerId,
+          hubCountry,
+          m.defaultProvince,
+          m.defaultDistrict,
+          m.defaultAddress,
+        ]
+          .join(' ')
+          .toLocaleLowerCase('tr');
+        if (!text.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [members, memberSearch, memberCityFilter]);
 
   const filteredRestaurants = useMemo(() => {
     const q = restSearch.trim().toLocaleLowerCase('tr');
@@ -393,11 +509,41 @@ export function AdminPanelModal({
     }
   };
 
+  const handleLookupMemberByUid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMemberLookupError('');
+    const uid = sanitizeText(memberLookupUid, 128);
+    if (!VALIDATION_BOUNDS.idPattern.test(uid)) {
+      setMemberLookupError('Geçerli bir kullanıcı UID girin.');
+      return;
+    }
+    try {
+      const snap = await getDoc(doc(db, 'users', uid));
+      if (!snap.exists()) {
+        setMemberLookupError('Bu UID ile kayıtlı üye bulunamadı.');
+        return;
+      }
+      const fetched = {
+        ...(snap.data() as MemberProfile),
+        ownerId: (snap.data() as MemberProfile).ownerId || snap.id,
+      };
+      setMembers((prev) => {
+        const others = prev.filter((m) => m.ownerId !== fetched.ownerId);
+        return [fetched, ...others];
+      });
+      setMemberLookupUid('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `users/${uid}`);
+    }
+  };
+
   const sectionTitleMap: Record<AdminSection, string> = {
     overview: 'Genel Bakış',
+    members: 'Uygulama Üyeleri',
     restaurants: 'Restoranlar',
     dishes: 'Menü Kataloğu',
     orders_admins: 'Siparişler & Yetkiler',
+    support: 'Canlı Destek Masası',
   };
 
   return (
@@ -550,6 +696,24 @@ export function AdminPanelModal({
 
               <button
                 type="button"
+                onClick={() => setSection('members')}
+                className={`flex items-center justify-between gap-2 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  section === 'members'
+                    ? 'bg-[#D9043D] text-white'
+                    : 'text-[#575550] hover:bg-[#FAF9F7] hover:text-[#141413]'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users className="w-4 h-4 shrink-0" />
+                  <span>Üyeler</span>
+                </span>
+                <span className="font-mono tabular-nums text-[11px] opacity-80">
+                  {members.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setSection('restaurants')}
                 className={`flex items-center justify-between gap-2 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   section === 'restaurants'
@@ -601,6 +765,19 @@ export function AdminPanelModal({
                   {orders.length}
                 </span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setSection('support')}
+                className={`flex items-center gap-2.5 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  section === 'support'
+                    ? 'bg-[#D9043D] text-white'
+                    : 'text-[#575550] hover:bg-[#FAF9F7] hover:text-[#141413]'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 shrink-0" />
+                <span>Canlı Destek</span>
+              </button>
             </aside>
 
             {/* Main Viewport */}
@@ -623,8 +800,23 @@ export function AdminPanelModal({
 
               {section === 'overview' && (
                 <div className="space-y-6">
-                  {/* Single-elevation 4-column KPI bar */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 bg-white border border-[#E6E4DF] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E6E4DF]">
+                  {/* Single-elevation 5-column KPI bar */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 bg-white border border-[#E6E4DF] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E6E4DF]">
+                    <button
+                      type="button"
+                      onClick={() => setSection('members')}
+                      className="p-5 text-left hover:bg-[#FAF9F7] transition-colors cursor-pointer"
+                    >
+                      <p className="text-xs text-[#575550] mb-1">
+                        Uygulama Üyeleri
+                      </p>
+                      <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
+                        {members.length}
+                      </p>
+                      <p className="text-[11px] text-[#D9043D] mt-1 font-medium">
+                        Üyeleri görüntüle →
+                      </p>
+                    </button>
                     <div className="p-5">
                       <p className="text-xs text-[#575550] mb-1">
                         Kayıtlı Üye Restoran
@@ -776,6 +968,288 @@ export function AdminPanelModal({
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {section === 'members' && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 bg-white border border-[#E6E4DF] rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-[#E6E4DF]">
+                    <div className="p-4">
+                      <p className="text-[11px] text-[#575550]">
+                        Toplam Kayıtlı Üye
+                      </p>
+                      <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
+                        {members.length}
+                      </p>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-[11px] text-[#575550]">
+                        Listelenen Üye
+                      </p>
+                      <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
+                        {filteredMembers.length}
+                      </p>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-[11px] text-[#575550]">
+                        Telefonu Kayıtlı
+                      </p>
+                      <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
+                        {members.filter((m) => Boolean(m.phone?.trim())).length}
+                      </p>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-[11px] text-[#575550]">
+                        Adresi Kayıtlı
+                      </p>
+                      <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
+                        {
+                          members.filter((m) =>
+                            Boolean(m.defaultAddress?.trim())
+                          ).length
+                        }
+                      </p>
+                    </div>
+                  </div>
+
+                  {!isBootstrappedAdminUser && (
+                    <div className="bg-white border border-[#E6E4DF] rounded-xl p-4 space-y-3">
+                      <p className="text-xs text-[#575550]">
+                        Tüm üyelerin toplu listelenmesi yalnızca ana yönetici (
+                        <span className="font-mono text-[#141413]">
+                          {BOOTSTRAPPED_ADMIN_EMAIL}
+                        </span>
+                        ) hesabına açıktır. Yardımcı yönetici olarak belirli bir
+                        üyeyi UID ile sorgulayabilirsiniz:
+                      </p>
+                      <form
+                        onSubmit={handleLookupMemberByUid}
+                        className="flex flex-col sm:flex-row gap-2"
+                      >
+                        <input
+                          type="text"
+                          value={memberLookupUid}
+                          onChange={(e) => setMemberLookupUid(e.target.value)}
+                          placeholder="Firebase Kullanıcı UID"
+                          className="flex-1 px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-mono"
+                        />
+                        <button
+                          type="submit"
+                          className="px-4 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] cursor-pointer"
+                        >
+                          Üyeyi Getir
+                        </button>
+                      </form>
+                      {memberLookupError && (
+                        <p className="text-xs text-[#DC2626]">
+                          {memberLookupError}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="relative sm:w-80">
+                      <Search className="w-4 h-4 text-[#575550] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        placeholder="Ad soyad, e-posta, telefon, konum veya UID ara..."
+                        className="w-full pl-9 pr-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
+                      />
+                    </div>
+
+                    <select
+                      value={memberCityFilter}
+                      onChange={(e) =>
+                        setMemberCityFilter(e.target.value as CityId)
+                      }
+                      aria-label="Ülkeye göre üye filtrele"
+                      className="px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
+                    >
+                      <CountrySelectOptions
+                        includeAllOption
+                        allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                      />
+                    </select>
+                  </div>
+
+                  <div className="bg-white border border-[#E6E4DF] rounded-xl overflow-hidden">
+                    {membersLoading ? (
+                      <div className="p-8 text-center text-xs text-[#575550]">
+                        Uygulama üyeleri yükleniyor...
+                      </div>
+                    ) : filteredMembers.length === 0 ? (
+                      <div className="p-10 text-center space-y-2">
+                        <p className="font-display text-base font-medium text-[#141413]">
+                          Kayıtlı uygulama üyesi bulunamadı
+                        </p>
+                        <p className="text-xs text-[#575550]">
+                          Google hesabı ile oturum açan ve profilini oluşturan
+                          tüm kullanıcılar burada listelenir.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="border-b border-[#E6E4DF] bg-[#FAF9F7] text-[#575550]">
+                              <th className="py-2.5 px-4 font-medium">Üye</th>
+                              <th className="py-2.5 px-4 font-medium">
+                                E-posta & Telefon
+                              </th>
+                              <th className="py-2.5 px-4 font-medium">
+                                Varsayılan Teslimat Bölgesi
+                              </th>
+                              <th className="py-2.5 px-4 font-medium text-right">
+                                Sipariş
+                              </th>
+                              <th className="py-2.5 px-4 font-medium">
+                                Kayıt / Güncelleme
+                              </th>
+                              <th className="py-2.5 px-4 font-medium text-right">
+                                Yetki
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E6E4DF]">
+                            {filteredMembers.map((member) => {
+                              const hub = CITY_HUBS.find(
+                                (h) => h.id === member.defaultCityId
+                              );
+                              const stats = memberOrderStats.get(
+                                member.ownerId
+                              ) ?? { count: 0, totalTry: 0 };
+                              const isPrimaryAdmin =
+                                member.email === BOOTSTRAPPED_ADMIN_EMAIL;
+                              const isDelegatedAdmin = admins.some(
+                                (a) => a.uid === member.ownerId
+                              );
+                              const initials = (
+                                member.displayName ||
+                                member.email ||
+                                'Ü'
+                              )
+                                .trim()
+                                .charAt(0)
+                                .toUpperCase();
+
+                              return (
+                                <tr
+                                  key={member.ownerId}
+                                  className="hover:bg-[#FAF9F7]"
+                                >
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-8 h-8 rounded-full bg-[#D9043D]/10 text-[#D9043D] font-display font-semibold text-xs flex items-center justify-center shrink-0">
+                                        {initials}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="font-semibold text-[#141413] truncate max-w-[190px]">
+                                          {member.displayName}
+                                        </p>
+                                        <p
+                                          className="font-mono text-[10px] text-[#8A8780] truncate max-w-[190px]"
+                                          title={member.ownerId}
+                                        >
+                                          UID: {member.ownerId}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 space-y-0.5">
+                                    <p className="flex items-center gap-1.5 text-[#141413]">
+                                      <Mail className="w-3 h-3 text-[#8A8780] shrink-0" />
+                                      <span className="truncate max-w-[200px]">
+                                        {member.email || 'E-posta yok'}
+                                      </span>
+                                    </p>
+                                    <p className="flex items-center gap-1.5 text-[#575550]">
+                                      <Phone className="w-3 h-3 text-[#8A8780] shrink-0" />
+                                      <span>
+                                        {member.phone?.trim() ||
+                                          'Telefon girilmedi'}
+                                      </span>
+                                    </p>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <p className="flex items-center gap-1.5 text-[#141413] font-medium">
+                                      <MapPin className="w-3 h-3 text-[#D9043D] shrink-0" />
+                                      <span>
+                                        {hub?.country ?? member.defaultCityId} ·{' '}
+                                        {member.defaultProvince} /{' '}
+                                        {member.defaultDistrict}
+                                      </span>
+                                    </p>
+                                    {member.defaultAddress && (
+                                      <p
+                                        className="text-[11px] text-[#575550] truncate max-w-[220px] pl-4"
+                                        title={member.defaultAddress}
+                                      >
+                                        {member.defaultAddress}
+                                      </p>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-right font-mono tabular-nums whitespace-nowrap">
+                                    <p className="font-semibold text-[#141413]">
+                                      {stats.count} sipariş
+                                    </p>
+                                    {stats.totalTry > 0 && (
+                                      <p className="text-[11px] text-[#575550]">
+                                        {Math.round(
+                                          stats.totalTry
+                                        ).toLocaleString('tr-TR')}{' '}
+                                        ₺
+                                      </p>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-[#575550] whitespace-nowrap">
+                                    <p>
+                                      {formatFirestoreDate(member.createdAt)}
+                                    </p>
+                                    <p className="text-[10px] text-[#8A8780]">
+                                      Günc:{' '}
+                                      {formatFirestoreDate(member.updatedAt)}
+                                    </p>
+                                  </td>
+                                  <td className="py-3 px-4 text-right whitespace-nowrap">
+                                    {isPrimaryAdmin ? (
+                                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-[#D9043D]/10 text-[#D9043D] text-[11px] font-medium">
+                                        Ana Yönetici
+                                      </span>
+                                    ) : isDelegatedAdmin ? (
+                                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-medium">
+                                        Yönetici
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setNewAdminUid(member.ownerId);
+                                          setNewAdminEmail(
+                                            member.email || ''
+                                          );
+                                          setNewAdminNote(
+                                            member.displayName || 'Yönetici'
+                                          );
+                                          setSection('orders_admins');
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#E6E4DF] bg-white text-[#141413] hover:border-[#D9043D] hover:text-[#D9043D] cursor-pointer"
+                                      >
+                                        <UserPlus className="w-3 h-3" />
+                                        <span>Yönetici Yap</span>
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1296,6 +1770,24 @@ export function AdminPanelModal({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {section === 'support' && (
+                <div className="space-y-4">
+                  <div className="bg-white border border-[#E6E4DF] rounded-xl px-5 py-3.5">
+                    <h3 className="font-display text-base font-semibold text-[#141413]">
+                      Restoran & Kurye Canlı Destek Masası
+                    </h3>
+                    <p className="text-xs text-[#575550] mt-0.5">
+                      Aktif sipariş müşterilerinin restoran veya kurye kanalına gönderdiği mesajları gerçek zamanlı yanıtlayın.
+                    </p>
+                  </div>
+                  <SupportStaffInbox
+                    orders={orders}
+                    enabled={isOpen && section === 'support'}
+                    compactHeightClass="h-[62vh] max-h-[540px]"
+                  />
                 </div>
               )}
             </main>

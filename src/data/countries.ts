@@ -101,6 +101,7 @@ const RAW_COUNTRIES: CountryTuple[] = [
   ['bangkok', 'Bangkok', 'Tayland', 'th', 'Asya', 13.7367, 100.5608, 'THB', '฿', 0.98, ['Sukhumvit', 'Thonglor', 'Ari', 'Silom'], '18–26 dk', 31, true],
   ['kr', 'Seul', 'Güney Kore', 'kr', 'Asya', 37.5665, 126.978, 'KRW', '₩', 39.5, ['Gangnam', 'Itaewon', 'Hongdae', 'Myeongdong'], '20–28 dk', 35, true],
   ['ae', 'Dubai', 'Birleşik Arap Emirlikleri', 'ae', 'Asya', 25.2048, 55.2708, 'AED', 'AED ', 0.106, ['DIFC', 'Downtown Dubai', 'Dubai Marina', 'Jumeirah'], '22–30 dk', 33, true],
+  ['hk', 'Hong Kong', 'Hong Kong', 'hk', 'Asya', 22.3193, 114.1694, 'HKD', 'HK$', 0.228, ['Central', 'Tsim Sha Tsui', 'Causeway Bay', 'Wan Chai', 'Mong Kok'], '19–27 dk', 34, true],
   ['cn', 'Şanghay', 'Çin', 'cn', 'Asya', 31.2304, 121.4737, 'CNY', '¥', 0.21, ['Jing’an', 'French Concession', 'Pudong', 'Xuhui'], '22–32 dk', 39],
   ['in', 'Mumbai', 'Hindistan', 'in', 'Asya', 19.076, 72.8777, 'INR', '₹', 2.45, ['Bandra', 'Colaba', 'Lower Parel', 'Juhu'], '24–34 dk', 41],
   ['sg', 'Singapur', 'Singapur', 'sg', 'Asya', 1.3521, 103.8198, 'SGD', 'S$', 0.038, ['Orchard', 'Marina Bay', 'Tiong Bahru'], '18–26 dk', 29],

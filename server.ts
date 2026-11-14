@@ -1,7 +1,12 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { ALL_COUNTRY_HUBS } from './src/data/countries.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -128,9 +133,597 @@ async function createStripePaymentIntentIfConfigured(
   }
 }
 
+function resolvePublicOrigin(req: express.Request): string {
+  const configured = process.env.APP_URL?.trim().replace(/\/+$/, '');
+  if (configured && /^https?:\/\//i.test(configured)) {
+    return configured;
+  }
+  const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '')
+    .split(',')[0]
+    ?.trim();
+  const proto = forwardedProto || req.protocol || 'https';
+  const host = String(req.headers['x-forwarded-host'] ?? req.get('host') ?? `localhost:${PORT}`)
+    .split(',')[0]
+    ?.trim();
+  return `${proto}://${host}`;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+type SupportChatChannel = 'restaurant' | 'courier';
+type SupportSenderRole = 'customer' | 'restaurant' | 'courier';
+type SupportOrderStatus = 'received' | 'preparing' | 'on_the_way' | 'delivered';
+
+interface SupportChatMessage {
+  id: string;
+  clientMessageId?: string;
+  orderId: string;
+  channel: SupportChatChannel;
+  senderRole: SupportSenderRole;
+  senderName: string;
+  text: string;
+  createdAt: string;
+}
+
+interface SupportThreadRecord {
+  orderId: string;
+  restaurantName: string;
+  courierName: string;
+  customerName: string;
+  cityName: string;
+  neighborhood: string;
+  orderStatus: SupportOrderStatus;
+  lastMessageAt: string;
+  unreadForCustomer: number;
+  unreadForStaff: number;
+  messages: SupportChatMessage[];
+}
+
+interface SupportOrderMetaInput {
+  restaurantName?: string;
+  courierName?: string;
+  customerName?: string;
+  cityName?: string;
+  neighborhood?: string;
+  orderStatus?: SupportOrderStatus;
+}
+
+const SUPPORT_STORE_PATH = path.join(os.tmpdir(), 'sofra-atlas-support-threads.json');
+const supportThreads = new Map<string, SupportThreadRecord>();
+const orderRooms = new Map<string, Set<WebSocket>>();
+const inboxClients = new Set<WebSocket>();
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function sanitizeChatString(raw: unknown, maxLen: number): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
+}
+
+function normalizeOrderId(raw: unknown): string {
+  const cleaned = sanitizeChatString(raw, 40).replace(/[^a-zA-Z0-9_-]/g, '');
+  return cleaned;
+}
+
+function loadSupportThreadsFromDisk() {
+  try {
+    if (!fs.existsSync(SUPPORT_STORE_PATH)) return;
+    const raw = fs.readFileSync(SUPPORT_STORE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw) as SupportThreadRecord[];
+    if (!Array.isArray(parsed)) return;
+    for (const item of parsed) {
+      if (item && typeof item.orderId === 'string' && Array.isArray(item.messages)) {
+        supportThreads.set(item.orderId, item);
+      }
+    }
+  } catch {
+    // Start fresh if store file is unreadable
+  }
+}
+
+function schedulePersistSupportThreads() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      const data = JSON.stringify(Array.from(supportThreads.values()));
+      fs.writeFileSync(SUPPORT_STORE_PATH, data, 'utf-8');
+    } catch {
+      // Ignore transient tmp write failures
+    }
+  }, 150);
+}
+
+function getOrCreateSupportThread(
+  orderId: string,
+  meta?: SupportOrderMetaInput
+): SupportThreadRecord {
+  const existing = supportThreads.get(orderId);
+  const validStatus =
+    meta?.orderStatus &&
+    ['received', 'preparing', 'on_the_way', 'delivered'].includes(meta.orderStatus)
+      ? meta.orderStatus
+      : undefined;
+
+  if (existing) {
+    if (meta?.restaurantName) {
+      const cleaned = sanitizeChatString(meta.restaurantName, 80);
+      if (cleaned) existing.restaurantName = cleaned;
+    }
+    if (meta?.courierName) {
+      const cleaned = sanitizeChatString(meta.courierName, 60);
+      if (cleaned) existing.courierName = cleaned;
+    }
+    if (meta?.customerName) {
+      const cleaned = sanitizeChatString(meta.customerName, 80);
+      if (cleaned) existing.customerName = cleaned;
+    }
+    if (meta?.cityName) {
+      const cleaned = sanitizeChatString(meta.cityName, 60);
+      if (cleaned) existing.cityName = cleaned;
+    }
+    if (meta?.neighborhood) {
+      const cleaned = sanitizeChatString(meta.neighborhood, 60);
+      if (cleaned) existing.neighborhood = cleaned;
+    }
+    if (validStatus) {
+      existing.orderStatus = validStatus;
+    }
+    return existing;
+  }
+
+  const created: SupportThreadRecord = {
+    orderId,
+    restaurantName: sanitizeChatString(meta?.restaurantName, 80) || 'Sofra Atlas Mutfağı',
+    courierName: sanitizeChatString(meta?.courierName, 60) || 'Teslimat Kuryesi',
+    customerName: sanitizeChatString(meta?.customerName, 80) || 'Müşteri',
+    cityName: sanitizeChatString(meta?.cityName, 60) || 'İstanbul',
+    neighborhood: sanitizeChatString(meta?.neighborhood, 60) || 'Merkez',
+    orderStatus: validStatus ?? 'received',
+    lastMessageAt: new Date().toISOString(),
+    unreadForCustomer: 0,
+    unreadForStaff: 0,
+    messages: [],
+  };
+  supportThreads.set(orderId, created);
+  schedulePersistSupportThreads();
+  return created;
+}
+
+function listSortedSupportThreads(): SupportThreadRecord[] {
+  return Array.from(supportThreads.values()).sort((a, b) =>
+    b.lastMessageAt.localeCompare(a.lastMessageAt)
+  );
+}
+
+function sendWsJson(ws: WebSocket, payload: unknown) {
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+function broadcastToOrderAndInbox(
+  orderId: string,
+  payload: unknown,
+  excludeSocket?: WebSocket
+) {
+  const room = orderRooms.get(orderId);
+  if (room) {
+    for (const client of room) {
+      if (client !== excludeSocket) {
+        sendWsJson(client, payload);
+      }
+    }
+  }
+  for (const client of inboxClients) {
+    if (client !== excludeSocket) {
+      sendWsJson(client, payload);
+    }
+  }
+}
+
+function commitSupportMessage(input: {
+  orderId: string;
+  channel: SupportChatChannel;
+  senderRole: SupportSenderRole;
+  senderName: string;
+  text: string;
+  clientMessageId?: string;
+  orderMeta?: SupportOrderMetaInput;
+}): { ok: true; message: SupportChatMessage; thread: SupportThreadRecord; duplicate: boolean } | { ok: false; error: string } {
+  const orderId = normalizeOrderId(input.orderId);
+  if (!orderId) {
+    return { ok: false, error: 'Geçerli bir sipariş numarası gereklidir.' };
+  }
+
+  const channel: SupportChatChannel =
+    input.channel === 'courier' ? 'courier' : 'restaurant';
+  const senderRole: SupportSenderRole =
+    input.senderRole === 'restaurant' || input.senderRole === 'courier'
+      ? input.senderRole
+      : 'customer';
+  const text = sanitizeChatString(input.text, 500);
+  if (!text) {
+    return { ok: false, error: 'Mesaj içeriği boş olamaz.' };
+  }
+
+  const thread = getOrCreateSupportThread(orderId, input.orderMeta);
+  const clientMessageId = sanitizeChatString(input.clientMessageId, 64) || undefined;
+
+  if (clientMessageId) {
+    const duplicateMsg = thread.messages.find(
+      (m) => m.clientMessageId === clientMessageId
+    );
+    if (duplicateMsg) {
+      return { ok: true, message: duplicateMsg, thread, duplicate: true };
+    }
+  }
+
+  const defaultSenderName =
+    senderRole === 'customer'
+      ? thread.customerName
+      : senderRole === 'courier'
+        ? thread.courierName
+        : thread.restaurantName;
+
+  const message: SupportChatMessage = {
+    id: generateId('MSG'),
+    clientMessageId,
+    orderId,
+    channel,
+    senderRole,
+    senderName: sanitizeChatString(input.senderName, 60) || defaultSenderName,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+
+  thread.messages.push(message);
+  if (thread.messages.length > 250) {
+    thread.messages = thread.messages.slice(-250);
+  }
+  thread.lastMessageAt = message.createdAt;
+  if (senderRole === 'customer') {
+    thread.unreadForStaff += 1;
+  } else {
+    thread.unreadForCustomer += 1;
+  }
+
+  schedulePersistSupportThreads();
+  return { ok: true, message, thread, duplicate: false };
+}
+
+loadSupportThreadsFromDisk();
+
 async function startServer() {
   const app = express();
+  const httpServer = http.createServer(app);
   app.use(express.json({ limit: '256kb' }));
+
+  const supportWss = new WebSocketServer({ noServer: true });
+  const wsAliveMap = new WeakMap<WebSocket, boolean>();
+
+  httpServer.on('upgrade', (request, socket, head) => {
+    try {
+      const reqUrl = new URL(request.url ?? '/', 'http://localhost');
+      if (reqUrl.pathname !== '/ws/support') {
+        socket.destroy();
+        return;
+      }
+
+      supportWss.handleUpgrade(request, socket, head, (ws) => {
+        const scope = reqUrl.searchParams.get('scope');
+        const orderId = normalizeOrderId(reqUrl.searchParams.get('orderId'));
+        wsAliveMap.set(ws, true);
+
+        ws.on('pong', () => {
+          wsAliveMap.set(ws, true);
+        });
+
+        if (scope === 'inbox') {
+          inboxClients.add(ws);
+          sendWsJson(ws, {
+            type: 'inbox:snapshot',
+            threads: listSortedSupportThreads(),
+          });
+        } else if (orderId) {
+          let room = orderRooms.get(orderId);
+          if (!room) {
+            room = new Set<WebSocket>();
+            orderRooms.set(orderId, room);
+          }
+          room.add(ws);
+          const thread = getOrCreateSupportThread(orderId);
+          sendWsJson(ws, {
+            type: 'thread:snapshot',
+            thread,
+          });
+        }
+
+        ws.on('message', (raw) => {
+          try {
+            const event = JSON.parse(String(raw)) as {
+              type?: string;
+              orderId?: string;
+              channel?: SupportChatChannel;
+              senderRole?: SupportSenderRole;
+              senderName?: string;
+              text?: string;
+              clientMessageId?: string;
+              orderMeta?: SupportOrderMetaInput;
+              readerRole?: 'customer' | 'staff';
+              isTyping?: boolean;
+            };
+
+            if (event.type === 'ping') {
+              sendWsJson(ws, { type: 'pong', ts: Date.now() });
+              return;
+            }
+
+            const targetOrderId = normalizeOrderId(event.orderId ?? orderId);
+            if (!targetOrderId) return;
+
+            if (event.type === 'thread:read') {
+              const thread = getOrCreateSupportThread(targetOrderId, event.orderMeta);
+              if (event.readerRole === 'staff') {
+                thread.unreadForStaff = 0;
+              } else {
+                thread.unreadForCustomer = 0;
+              }
+              schedulePersistSupportThreads();
+              broadcastToOrderAndInbox(targetOrderId, {
+                type: 'thread:updated',
+                orderId: targetOrderId,
+                thread,
+              });
+              return;
+            }
+
+            if (event.type === 'typing') {
+              broadcastToOrderAndInbox(
+                targetOrderId,
+                {
+                  type: 'typing',
+                  orderId: targetOrderId,
+                  channel: event.channel === 'courier' ? 'courier' : 'restaurant',
+                  senderRole:
+                    event.senderRole === 'restaurant' || event.senderRole === 'courier'
+                      ? event.senderRole
+                      : 'customer',
+                  senderName: sanitizeChatString(event.senderName, 60),
+                  isTyping: Boolean(event.isTyping),
+                },
+                ws
+              );
+              return;
+            }
+
+            if (event.type === 'message:send') {
+              const result = commitSupportMessage({
+                orderId: targetOrderId,
+                channel: event.channel ?? 'restaurant',
+                senderRole: event.senderRole ?? 'customer',
+                senderName: event.senderName ?? '',
+                text: event.text ?? '',
+                clientMessageId: event.clientMessageId,
+                orderMeta: event.orderMeta,
+              });
+
+              if (!result.ok) {
+                sendWsJson(ws, { type: 'error', error: result.error });
+                return;
+              }
+
+              if (result.duplicate) {
+                sendWsJson(ws, {
+                  type: 'message:ack',
+                  orderId: targetOrderId,
+                  message: result.message,
+                  thread: result.thread,
+                });
+                return;
+              }
+
+              broadcastToOrderAndInbox(targetOrderId, {
+                type: 'message:new',
+                orderId: targetOrderId,
+                message: result.message,
+                thread: result.thread,
+              });
+            }
+          } catch {
+            // Ignore malformed client payloads
+          }
+        });
+
+        ws.on('close', () => {
+          inboxClients.delete(ws);
+          if (orderId) {
+            const room = orderRooms.get(orderId);
+            if (room) {
+              room.delete(ws);
+              if (room.size === 0) orderRooms.delete(orderId);
+            }
+          }
+        });
+      });
+    } catch {
+      socket.destroy();
+    }
+  });
+
+  const wsPingInterval = setInterval(() => {
+    for (const client of supportWss.clients) {
+      if (wsAliveMap.get(client) === false) {
+        client.terminate();
+        continue;
+      }
+      wsAliveMap.set(client, false);
+      client.ping();
+    }
+  }, 25000);
+
+  httpServer.on('close', () => {
+    clearInterval(wsPingInterval);
+  });
+
+  app.get('/api/support-chats', (_req, res) => {
+    res.json({ threads: listSortedSupportThreads() });
+  });
+
+  app.get('/api/support-chats/:orderId', (req, res) => {
+    const orderId = normalizeOrderId(req.params.orderId);
+    if (!orderId) {
+      res.status(400).json({ error: 'Geçersiz sipariş numarası.' });
+      return;
+    }
+    const thread = getOrCreateSupportThread(orderId);
+    res.json({ thread });
+  });
+
+  app.post('/api/support-chats/:orderId/register', (req, res) => {
+    const orderId = normalizeOrderId(req.params.orderId);
+    if (!orderId) {
+      res.status(400).json({ error: 'Geçersiz sipariş numarası.' });
+      return;
+    }
+    const meta = (req.body ?? {}) as SupportOrderMetaInput;
+    const thread = getOrCreateSupportThread(orderId, meta);
+    schedulePersistSupportThreads();
+    broadcastToOrderAndInbox(orderId, {
+      type: 'thread:updated',
+      orderId,
+      thread,
+    });
+    res.json({ thread });
+  });
+
+  app.post('/api/support-chats/:orderId/messages', (req, res) => {
+    const orderId = normalizeOrderId(req.params.orderId);
+    const body = (req.body ?? {}) as {
+      channel?: SupportChatChannel;
+      senderRole?: SupportSenderRole;
+      senderName?: string;
+      text?: string;
+      clientMessageId?: string;
+      orderMeta?: SupportOrderMetaInput;
+    };
+
+    const result = commitSupportMessage({
+      orderId,
+      channel: body.channel ?? 'restaurant',
+      senderRole: body.senderRole ?? 'customer',
+      senderName: body.senderName ?? '',
+      text: body.text ?? '',
+      clientMessageId: body.clientMessageId,
+      orderMeta: body.orderMeta,
+    });
+
+    if (!result.ok) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    if (!result.duplicate) {
+      broadcastToOrderAndInbox(orderId, {
+        type: 'message:new',
+        orderId,
+        message: result.message,
+        thread: result.thread,
+      });
+    }
+
+    res.json({
+      message: result.message,
+      thread: result.thread,
+      duplicate: result.duplicate,
+    });
+  });
+
+  app.post('/api/support-chats/:orderId/read', (req, res) => {
+    const orderId = normalizeOrderId(req.params.orderId);
+    if (!orderId) {
+      res.status(400).json({ error: 'Geçersiz sipariş numarası.' });
+      return;
+    }
+    const body = (req.body ?? {}) as { readerRole?: 'customer' | 'staff' };
+    const thread = getOrCreateSupportThread(orderId);
+    if (body.readerRole === 'staff') {
+      thread.unreadForStaff = 0;
+    } else {
+      thread.unreadForCustomer = 0;
+    }
+    schedulePersistSupportThreads();
+    broadcastToOrderAndInbox(orderId, {
+      type: 'thread:updated',
+      orderId,
+      thread,
+    });
+    res.json({ thread });
+  });
+
+  app.get('/robots.txt', (req, res) => {
+    const origin = resolvePublicOrigin(req);
+    res.type('text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(
+      [
+        'User-agent: *',
+        'Allow: /',
+        'Disallow: /api/',
+        `Sitemap: ${origin}/sitemap.xml`,
+        '',
+      ].join('\n')
+    );
+  });
+
+  app.get('/sitemap.xml', (req, res) => {
+    const origin = resolvePublicOrigin(req);
+    const today = new Date().toISOString().slice(0, 10);
+    const urls = [
+      { loc: `${origin}/`, priority: '1.0', changefreq: 'daily' },
+      ...ALL_COUNTRY_HUBS.map((hub) => ({
+        loc: `${origin}/?sehir=${encodeURIComponent(hub.id)}`,
+        priority: '0.8',
+        changefreq: 'weekly',
+      })),
+    ];
+
+    const body = urls
+      .map(
+        (u) => `  <url>
+    <loc>${escapeXml(u.loc)}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`
+      )
+      .join('\n');
+
+    res.type('application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${body}
+</urlset>`);
+  });
 
   app.get('/api/payments/config', (_req, res) => {
     const hasStripe = Boolean(process.env.STRIPE_SECRET_KEY?.trim());
@@ -386,19 +979,134 @@ async function startServer() {
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        hmr: false,
+        ws: false,
+      },
       appType: 'spa',
     });
+
+    app.get('/@vite/client', (_req, res) => {
+      res.type('application/javascript');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(`
+const sheetsMap = new Map();
+const linkSheetsMap = new Map();
+if (typeof document !== 'undefined') {
+  document.querySelectorAll('style[data-vite-dev-id]').forEach((el) => {
+    sheetsMap.set(el.getAttribute('data-vite-dev-id'), el);
+  });
+  document.querySelectorAll('link[rel="stylesheet"][data-vite-dev-id]').forEach((el) => {
+    linkSheetsMap.set(el.getAttribute('data-vite-dev-id'), el);
+  });
+}
+let lastInsertedStyle;
+const cspNonce =
+  typeof document !== 'undefined'
+    ? document.querySelector('meta[property=csp-nonce]')?.nonce
+    : undefined;
+
+export function updateStyle(id, content) {
+  if (linkSheetsMap.has(id)) return;
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.setAttribute('data-vite-dev-id', id);
+    style.textContent = content;
+    if (cspNonce) style.setAttribute('nonce', cspNonce);
+    if (!lastInsertedStyle) {
+      document.head.appendChild(style);
+      setTimeout(() => {
+        lastInsertedStyle = undefined;
+      }, 0);
+    } else {
+      lastInsertedStyle.insertAdjacentElement('afterend', style);
+    }
+    lastInsertedStyle = style;
+  } else if (style.textContent !== content) {
+    style.textContent = content;
+  }
+  sheetsMap.set(id, style);
+}
+
+export function removeStyle(id) {
+  if (linkSheetsMap.has(id)) {
+    document
+      .querySelectorAll('link[rel="stylesheet"][data-vite-dev-id="' + CSS.escape(id) + '"]')
+      .forEach((el) => el.remove());
+    linkSheetsMap.delete(id);
+  }
+  const style = sheetsMap.get(id);
+  if (style) {
+    document.head.removeChild(style);
+    sheetsMap.delete(id);
+  }
+}
+
+export function createHotContext() {
+  const data = {};
+  const noop = () => {};
+  return {
+    data,
+    accept: noop,
+    acceptExports: noop,
+    dispose: noop,
+    prune: noop,
+    decline: noop,
+    invalidate: noop,
+    on: noop,
+    off: noop,
+    send: noop,
+  };
+}
+
+export function injectQuery(url, queryToInject) {
+  if (url[0] !== '.' && url[0] !== '/') return url;
+  const pathname = url.replace(/[?#].*$/, '');
+  const { search, hash } = new URL(url, 'http://vite.dev');
+  return pathname + '?' + queryToInject + (search ? '&' + search.slice(1) : '') + (hash || '');
+}
+
+export class ErrorOverlay {
+  constructor() {}
+}
+`);
+    });
+
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(__dirname, 'dist');
-    app.use(express.static(distDir));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distDir, 'index.html'));
+    app.use(express.static(distDir, { index: false }));
+    app.get('*', (req, res) => {
+      const indexPath = path.join(distDir, 'index.html');
+      try {
+        let html = fs.readFileSync(indexPath, 'utf-8');
+        const origin = resolvePublicOrigin(req);
+        const canonical = `${origin}${req.path === '/' ? '/' : req.path}`;
+        const verification = process.env.GOOGLE_SITE_VERIFICATION?.trim();
+        const extraTags = [
+          `<link rel="canonical" href="${escapeHtmlAttr(canonical)}" />`,
+          `<meta property="og:url" content="${escapeHtmlAttr(canonical)}" />`,
+          verification
+            ? `<meta name="google-site-verification" content="${escapeHtmlAttr(verification)}" />`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n    ');
+        html = html
+          .replace(/content="\/og-cover\.jpg"/g, `content="${escapeHtmlAttr(origin)}/og-cover.jpg"`)
+          .replace('</head>', `    ${extraTags}\n  </head>`);
+        res.type('text/html; charset=utf-8').send(html);
+      } catch {
+        res.sendFile(indexPath);
+      }
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Sofra Atlas server running on http://0.0.0.0:${PORT}`);
   });
 }

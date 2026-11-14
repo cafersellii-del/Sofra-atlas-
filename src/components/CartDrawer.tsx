@@ -34,6 +34,7 @@ import type {
   CartItem,
   CityId,
   CurrencyMode,
+  MemberProfile,
   Order,
   PaymentMethod,
   PaymentReceipt,
@@ -64,6 +65,7 @@ interface CartDrawerProps {
   initialDeliveryAddress?: string;
   isMapsProviderActive?: boolean;
   currentUser: User | null;
+  memberProfile?: MemberProfile | null;
   savedCards: SavedCardRecord[];
   onSaveCard: (card: Omit<SavedCardRecord, 'id' | 'ownerId'>) => Promise<void>;
   onDeleteSavedCard: (cardId: string) => Promise<void>;
@@ -164,6 +166,7 @@ export function CartDrawer({
   initialDeliveryAddress = '',
   isMapsProviderActive = false,
   currentUser,
+  memberProfile = null,
   savedCards,
   onSaveCard,
   onDeleteSavedCard,
@@ -235,10 +238,18 @@ export function CartDrawer({
   }, [initialDeliveryAddress]);
 
   useEffect(() => {
-    if (currentUser?.displayName && !customerName.trim()) {
-      setCustomerName(currentUser.displayName);
+    const resolvedName =
+      memberProfile?.displayName || currentUser?.displayName || '';
+    if (resolvedName && !customerName.trim()) {
+      setCustomerName(resolvedName);
     }
-  }, [currentUser]);
+    if (memberProfile?.phone && !customerPhone.trim()) {
+      setCustomerPhone(memberProfile.phone);
+    }
+    if (memberProfile?.defaultAddress && !address.trim()) {
+      setAddress(memberProfile.defaultAddress);
+    }
+  }, [currentUser, memberProfile]);
 
   useEffect(() => {
     if (savedCards.length > 0 && selectedSavedCardId === 'new') {

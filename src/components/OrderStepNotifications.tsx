@@ -4,10 +4,13 @@ import {
   Bike,
   CheckCircle2,
   ChefHat,
+  MessageSquare,
   Navigation,
   Receipt,
   X,
 } from 'lucide-react';
+import { useLanguage } from '../i18n/LanguageContext';
+import type { UITranslations } from '../i18n/translations';
 import type { OrderStatus } from '../types/food';
 
 export interface OrderStepNotification {
@@ -24,6 +27,7 @@ interface OrderStepNotificationsProps {
   notifications: OrderStepNotification[];
   onDismiss: (uid: string) => void;
   onTrackOrder: (orderId: string) => void;
+  onOpenSupport?: (orderId: string) => void;
 }
 
 const STEP_INDEX: Record<OrderStatus, number> = {
@@ -33,7 +37,10 @@ const STEP_INDEX: Record<OrderStatus, number> = {
   delivered: 3,
 };
 
-function getStepCopy(item: OrderStepNotification): {
+function getStepCopy(
+  item: OrderStepNotification,
+  t: UITranslations
+): {
   title: string;
   subtitle: string;
   badge: string;
@@ -41,27 +48,27 @@ function getStepCopy(item: OrderStepNotification): {
   switch (item.status) {
     case 'received':
       return {
-        badge: 'Adım 1/4 · Onaylandı',
-        title: 'Siparişiniz Alındı',
-        subtitle: `#${item.orderId} numaralı siparişiniz ${item.cityName} mutfağına iletildi.`,
+        badge: t.step1Badge,
+        title: t.step1Title,
+        subtitle: `#${item.orderId} · ${item.cityName}`,
       };
     case 'preparing':
       return {
-        badge: 'Adım 2/4 · Mutfakta',
-        title: 'Şef Mutfağında Hazırlanıyor',
-        subtitle: `Siparişiniz ${item.neighborhood} teslimatı için taze hazırlanıyor. Kurye ${item.courierName} atandı.`,
+        badge: t.step2Badge,
+        title: t.step2Title,
+        subtitle: `${item.neighborhood} · ${item.courierName}`,
       };
     case 'on_the_way':
       return {
-        badge: 'Adım 3/4 · Canlı Konum Aktif',
-        title: 'Kurye Yola Çıktı!',
-        subtitle: `${item.courierName} rotada ilerliyor (${item.neighborhood}). Tahmini varış: ${item.estimatedArrival}.`,
+        badge: t.step3Badge,
+        title: t.step3Title,
+        subtitle: `${item.courierName} (${item.neighborhood}) · ${item.estimatedArrival}`,
       };
     case 'delivered':
       return {
-        badge: 'Adım 4/4 · Tamamlandı',
-        title: 'Siparişiniz Teslim Edildi',
-        subtitle: `#${item.orderId} adresinize ulaştırıldı. Afiyet olsun!`,
+        badge: t.step4Badge,
+        title: t.step4Title,
+        subtitle: `#${item.orderId} · ${item.neighborhood}`,
       };
   }
 }
@@ -97,7 +104,9 @@ export function OrderStepNotifications({
   notifications,
   onDismiss,
   onTrackOrder,
+  onOpenSupport,
 }: OrderStepNotificationsProps) {
+  const { t } = useLanguage();
   if (notifications.length === 0) return null;
 
   return (
@@ -107,7 +116,7 @@ export function OrderStepNotifications({
     >
       <AnimatePresence mode="popLayout">
         {notifications.map((item) => {
-          const copy = getStepCopy(item);
+          const copy = getStepCopy(item, t);
           const currentIdx = STEP_INDEX[item.status];
           const isHighlighted =
             item.status === 'on_the_way' || item.status === 'delivered';
@@ -181,18 +190,33 @@ export function OrderStepNotifications({
                     ))}
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onTrackOrder(item.orderId);
-                        onDismiss(item.uid);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D9043D] text-white text-[11px] font-semibold hover:bg-[#B80032] transition-colors cursor-pointer"
-                    >
-                      <Navigation className="w-3 h-3" />
-                      <span>Canlı Haritada Takip Et</span>
-                    </button>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onTrackOrder(item.orderId);
+                          onDismiss(item.uid);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#D9043D] text-white text-[11px] font-semibold hover:bg-[#B80032] transition-colors cursor-pointer"
+                      >
+                        <Navigation className="w-3 h-3" />
+                        <span>{t.trackLiveBtn}</span>
+                      </button>
+                      {onOpenSupport && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onOpenSupport(item.orderId);
+                            onDismiss(item.uid);
+                          }}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[#141413] text-[11px] font-semibold hover:border-[#D9043D] hover:text-[#D9043D] transition-colors cursor-pointer"
+                        >
+                          <MessageSquare className="w-3 h-3 text-[#D9043D]" />
+                          <span>{t.liveSupportBtn}</span>
+                        </button>
+                      )}
+                    </div>
                     <span className="font-mono text-[10px] text-[#8A8780]">
                       #{item.orderId}
                     </span>

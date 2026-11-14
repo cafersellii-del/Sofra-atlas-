@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   MapPin,
+  MessageSquare,
   Navigation,
   Radio,
   Truck,
@@ -19,13 +20,19 @@ import {
   X,
 } from 'lucide-react';
 import { getCenterForProvince } from '../data/locations';
+import { useLanguage } from '../i18n/LanguageContext';
 import {
   CITY_HUB_ANCHORS,
   DEFAULT_MAP_ID,
   GOOGLE_MAPS_ATTRIBUTION_IDS,
   notifyQuotaExceededIfNeeded,
 } from '../lib/maps';
-import type { CurrencyMode, Order, OrderStatus } from '../types/food';
+import type {
+  CurrencyMode,
+  Order,
+  OrderStatus,
+  SupportChatChannel,
+} from '../types/food';
 import { formatPrice } from '../utils/currency';
 
 interface OrdersPanelProps {
@@ -36,6 +43,8 @@ interface OrdersPanelProps {
   focusedOrderId?: string | null;
   onClose: () => void;
   onAdvanceStatus: (orderId: string) => void;
+  onOpenSupport?: (order: Order, channel?: SupportChatChannel) => void;
+  onOpenStaffInbox?: () => void;
 }
 
 const STEPS: { key: OrderStatus; label: string; shortNote: string }[] = [
@@ -593,7 +602,10 @@ export function OrdersPanel({
   focusedOrderId = null,
   onClose,
   onAdvanceStatus,
+  onOpenSupport,
+  onOpenStaffInbox,
 }: OrdersPanelProps) {
+  const { t } = useLanguage();
   const [expandedMapOrderId, setExpandedMapOrderId] = useState<string | null>(
     null
   );
@@ -636,23 +648,35 @@ export function OrdersPanel({
         className="w-full max-w-lg h-full bg-white border-l border-[#E6E4DF] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-4 border-b border-[#E6E4DF] flex items-center justify-between">
-          <div>
+        <div className="px-6 py-4 border-b border-[#E6E4DF] flex items-center justify-between gap-2">
+          <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold text-[#141413]">
               Siparişlerim & Canlı Kurye Takibi
             </h2>
             <p className="text-xs text-[#575550]">
-              Haritada anlık kurye konumu, rota mesafesi ve adım bildirimleri
+              Haritada anlık kurye konumu, adım bildirimleri ve canlı destek
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Siparişler panelini kapat"
-            className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onOpenStaffInbox && (
+              <button
+                type="button"
+                onClick={onOpenStaffInbox}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 min-h-[36px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[11px] font-medium text-[#141413] hover:border-[#D9043D] hover:text-[#D9043D] transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-[#D9043D]" />
+                <span className="hidden sm:inline">{t.staffInboxBtn}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Siparişler panelini kapat"
+              className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 bg-[#FAF9F7]">
@@ -766,21 +790,44 @@ export function OrdersPanel({
                           </span>
                         </div>
                       )}
-                    <div className="col-span-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedMapOrderId(isMapOpen ? null : order.id)
-                        }
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D9043D] hover:underline cursor-pointer"
-                      >
-                        <Navigation className="w-3.5 h-3.5" />
-                        <span>
-                          {isMapOpen
-                            ? 'Canlı Kurye Haritasını Gizle'
-                            : 'Canlı Kurye Takibini Aç'}
-                        </span>
-                      </button>
+                    <div className="col-span-2 pt-1 space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedMapOrderId(isMapOpen ? null : order.id)
+                          }
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#D9043D] hover:underline cursor-pointer"
+                        >
+                          <Navigation className="w-3.5 h-3.5" />
+                          <span>
+                            {isMapOpen
+                              ? 'Canlı Kurye Haritasını Gizle'
+                              : 'Canlı Kurye Takibini Aç'}
+                          </span>
+                        </button>
+
+                        {onOpenSupport && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => onOpenSupport(order, 'restaurant')}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 min-h-[32px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[11px] font-semibold text-[#141413] hover:border-[#D9043D] hover:text-[#D9043D] transition-colors cursor-pointer"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5 text-[#D9043D]" />
+                              <span>{t.liveSupportBtn}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onOpenSupport(order, 'courier')}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 min-h-[32px] rounded-lg border border-[#D9043D]/30 bg-white text-[11px] font-semibold text-[#D9043D] hover:bg-[#D9043D] hover:text-white transition-colors cursor-pointer"
+                            >
+                              <Bike className="w-3.5 h-3.5" />
+                              <span>Kuryeye Yaz</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       {isMapOpen && (
                         <OrderTrackingMap
                           order={order}

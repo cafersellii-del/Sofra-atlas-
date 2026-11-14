@@ -9,12 +9,14 @@ import {
   X,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { useLanguage } from '../i18n/LanguageContext';
 
 interface PWAInstallButtonProps {
   variant?: 'header' | 'footer' | 'banner';
 }
 
 export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) {
+  const { t } = useLanguage();
   const {
     isInstallable,
     isInstalled,
@@ -48,14 +50,14 @@ export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) 
         >
           <Download className="w-4 h-4 shrink-0" />
           <span>
-            {justInstalled ? 'Uygulama Yüklendi' : 'Uygulamayı İndir (App)'}
+            {justInstalled ? t.installedLabel : t.installFooter}
           </span>
         </button>
       ) : (
         <button
           type="button"
           onClick={handleClick}
-          title="Sofra Atlas mobil ve masaüstü uygulamasını yükleyin"
+          title={t.installHeader}
           className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-[#141413] text-xs font-semibold hover:border-[#D9043D] hover:text-[#D9043D] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           {justInstalled ? (
@@ -64,7 +66,7 @@ export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) 
             <Download className="w-4 h-4 text-[#D9043D] shrink-0" />
           )}
           <span className="hidden sm:inline">
-            {justInstalled ? 'Uygulama Yüklendi' : 'Uygulamayı İndir'}
+            {justInstalled ? t.installedLabel : t.installHeader}
           </span>
           <span className="sm:hidden">App</span>
         </button>
