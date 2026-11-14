@@ -34,6 +34,10 @@ import {
   resolveImagePreset,
 } from '../data/catalog';
 import {
+  getDistrictsForProvince,
+  getProvincesForCountry,
+} from '../data/locations';
+import {
   auth,
   db,
   googleProvider,
@@ -90,6 +94,7 @@ export function RestaurantPortalModal({
   const [regName, setRegName] = useState('');
   const [regCityId, setRegCityId] =
     useState<Exclude<CityId, 'all'>>('istanbul');
+  const [regProvince, setRegProvince] = useState('İstanbul');
   const [regDistrict, setRegDistrict] = useState('Karaköy');
   const [regCategory, setRegCategory] = useState<
     Exclude<CuisineCategory, 'Tümü'>
@@ -160,6 +165,7 @@ export function RestaurantPortalModal({
           setRestaurant(profile);
           setRegName(profile.name);
           setRegCityId(profile.cityId);
+          setRegProvince(profile.cityName || 'İstanbul');
           setRegDistrict(profile.district);
           setRegCategory(profile.cuisineCategory);
           setRegPrepMinutes(profile.avgPrepMinutes);
@@ -224,6 +230,23 @@ export function RestaurantPortalModal({
 
   const selectedCityHub =
     CITY_HUBS.find((c) => c.id === regCityId) ?? CITY_HUBS[0];
+  const provinceOptions = getProvincesForCountry(regCityId);
+  const districtOptions = getDistrictsForProvince(regCityId, regProvince);
+  const effectiveProvinceOptions = provinceOptions.some(
+    (p) => p.name === regProvince
+  )
+    ? provinceOptions
+    : [
+        {
+          name: regProvince,
+          center: selectedCityHub.center,
+          districts: districtOptions,
+        },
+        ...provinceOptions,
+      ];
+  const effectiveDistrictOptions = districtOptions.includes(regDistrict)
+    ? districtOptions
+    : [regDistrict, ...districtOptions].filter(Boolean);
 
   const handleGoogleSignIn = async () => {
     setAuthError('');
@@ -259,6 +282,12 @@ export function RestaurantPortalModal({
     setFeedbackMessage('');
 
     const name = sanitizeText(regName, VALIDATION_BOUNDS.nameMax);
+    const provinceRaw = sanitizeText(
+      regProvince,
+      VALIDATION_BOUNDS.cityNameMax
+    );
+    const cityName =
+      provinceRaw.length >= 2 ? provinceRaw : selectedCityHub.name;
     const district = sanitizeText(regDistrict, VALIDATION_BOUNDS.districtMax);
     const avgPrepMinutes = sanitizeText(
       regPrepMinutes,
@@ -278,7 +307,7 @@ export function RestaurantPortalModal({
       return;
     }
     if (district.length < VALIDATION_BOUNDS.districtMin) {
-      setFormError('Lütfen geçerli bir semt veya bölge adı girin.');
+      setFormError('Lütfen geçerli bir ilçe veya semt seçin.');
       return;
     }
     if (tagline.length < VALIDATION_BOUNDS.taglineMin) {
@@ -307,7 +336,7 @@ export function RestaurantPortalModal({
         ownerId: user.uid,
         name,
         cityId: selectedCityHub.id,
-        cityName: selectedCityHub.name,
+        cityName,
         district,
         cuisineCategory: regCategory,
         avgPrepMinutes,
@@ -348,6 +377,12 @@ export function RestaurantPortalModal({
     setFeedbackMessage('');
 
     const name = sanitizeText(regName, VALIDATION_BOUNDS.nameMax);
+    const provinceRaw = sanitizeText(
+      regProvince,
+      VALIDATION_BOUNDS.cityNameMax
+    );
+    const cityName =
+      provinceRaw.length >= 2 ? provinceRaw : selectedCityHub.name;
     const district = sanitizeText(regDistrict, VALIDATION_BOUNDS.districtMax);
     const avgPrepMinutes = sanitizeText(
       regPrepMinutes,
@@ -381,7 +416,7 @@ export function RestaurantPortalModal({
       batch.update(doc(db, 'restaurants', user.uid), {
         name,
         cityId: selectedCityHub.id,
-        cityName: selectedCityHub.name,
+        cityName,
         district,
         cuisineCategory: regCategory,
         avgPrepMinutes,
@@ -746,37 +781,72 @@ export function RestaurantPortalModal({
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-[#575550] mb-1.5">
-                    Bulunduğunuz Ülke ve Şehir
-                  </label>
-                  <select
-                    value={regCityId}
-                    onChange={(e) => {
-                      const nextId = e.target.value as Exclude<CityId, 'all'>;
-                      setRegCityId(nextId);
-                      const hub = CITY_HUBS.find((c) => c.id === nextId);
-                      if (hub) setRegDistrict(hub.neighborhoods[0]);
-                    }}
-                    className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
-                  >
-                    <CountrySelectOptions />
-                  </select>
-                </div>
+                <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-[#575550] mb-1.5">
+                      Ülke
+                    </label>
+                    <select
+                      value={regCityId}
+                      onChange={(e) => {
+                        const nextId = e.target.value as Exclude<CityId, 'all'>;
+                        const nextProvs = getProvincesForCountry(nextId);
+                        const firstProv = nextProvs[0]?.name ?? 'Merkez';
+                        const nextDists = getDistrictsForProvince(
+                          nextId,
+                          firstProv
+                        );
+                        setRegCityId(nextId);
+                        setRegProvince(firstProv);
+                        setRegDistrict(nextDists[0] ?? 'Merkez');
+                      }}
+                      className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                    >
+                      <CountrySelectOptions />
+                    </select>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-[#575550] mb-1.5">
-                    Semt / Bölge
-                  </label>
-                  <input
-                    type="text"
-                    value={regDistrict}
-                    onChange={(e) => setRegDistrict(e.target.value)}
-                    placeholder="Örn: Karaköy, Shibuya, SoHo..."
-                    maxLength={VALIDATION_BOUNDS.districtMax}
-                    required
-                    className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] text-sm"
-                  />
+                  <div>
+                    <label className="block text-xs font-medium text-[#575550] mb-1.5">
+                      İl / Şehir
+                    </label>
+                    <select
+                      value={regProvince}
+                      onChange={(e) => {
+                        const nextProv = e.target.value;
+                        const nextDists = getDistrictsForProvince(
+                          regCityId,
+                          nextProv
+                        );
+                        setRegProvince(nextProv);
+                        setRegDistrict(nextDists[0] ?? 'Merkez');
+                      }}
+                      className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                    >
+                      {effectiveProvinceOptions.map((prov) => (
+                        <option key={prov.name} value={prov.name}>
+                          {prov.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-[#575550] mb-1.5">
+                      İlçe / Semt
+                    </label>
+                    <select
+                      value={regDistrict}
+                      onChange={(e) => setRegDistrict(e.target.value)}
+                      className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                    >
+                      {effectiveDistrictOptions.map((dist) => (
+                        <option key={dist} value={dist}>
+                          {dist}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -1314,34 +1384,73 @@ export function RestaurantPortalModal({
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#575550] mb-1">
-                        Ülke ve Şehir
-                      </label>
-                      <select
-                        value={regCityId}
-                        onChange={(e) =>
-                          setRegCityId(
-                            e.target.value as Exclude<CityId, 'all'>
-                          )
-                        }
-                        className="w-full px-3.5 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
-                      >
-                        <CountrySelectOptions />
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#575550] mb-1">
-                        Semt / Bölge
-                      </label>
-                      <input
-                        type="text"
-                        value={regDistrict}
-                        onChange={(e) => setRegDistrict(e.target.value)}
-                        maxLength={VALIDATION_BOUNDS.districtMax}
-                        required
-                        className="w-full px-3.5 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-sm"
-                      />
+                    <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-[#575550] mb-1">
+                          Ülke
+                        </label>
+                        <select
+                          value={regCityId}
+                          onChange={(e) => {
+                            const nextId = e.target.value as Exclude<
+                              CityId,
+                              'all'
+                            >;
+                            const nextProvs = getProvincesForCountry(nextId);
+                            const firstProv = nextProvs[0]?.name ?? 'Merkez';
+                            const nextDists = getDistrictsForProvince(
+                              nextId,
+                              firstProv
+                            );
+                            setRegCityId(nextId);
+                            setRegProvince(firstProv);
+                            setRegDistrict(nextDists[0] ?? 'Merkez');
+                          }}
+                          className="w-full px-3.5 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                        >
+                          <CountrySelectOptions />
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#575550] mb-1">
+                          İl / Şehir
+                        </label>
+                        <select
+                          value={regProvince}
+                          onChange={(e) => {
+                            const nextProv = e.target.value;
+                            const nextDists = getDistrictsForProvince(
+                              regCityId,
+                              nextProv
+                            );
+                            setRegProvince(nextProv);
+                            setRegDistrict(nextDists[0] ?? 'Merkez');
+                          }}
+                          className="w-full px-3.5 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                        >
+                          {effectiveProvinceOptions.map((prov) => (
+                            <option key={prov.name} value={prov.name}>
+                              {prov.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#575550] mb-1">
+                          İlçe / Semt
+                        </label>
+                        <select
+                          value={regDistrict}
+                          onChange={(e) => setRegDistrict(e.target.value)}
+                          className="w-full px-3.5 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                        >
+                          {effectiveDistrictOptions.map((dist) => (
+                            <option key={dist} value={dist}>
+                              {dist}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-[#575550] mb-1">

@@ -18,6 +18,10 @@ import {
   CUISINE_CATEGORIES,
   FEATURED_GLOBAL_HUBS,
 } from '../data/catalog';
+import {
+  getDistrictsForProvince,
+  getProvincesForCountry,
+} from '../data/locations';
 import type {
   CityId,
   ContinentId,
@@ -36,6 +40,10 @@ interface RestaurantMarketplaceProps {
   dishes: Dish[];
   selectedCity: CityId;
   onSelectCity: (cityId: CityId) => void;
+  selectedProvince: 'all' | string;
+  onSelectProvince: (province: 'all' | string) => void;
+  selectedDistrict: 'all' | string;
+  onSelectDistrict: (district: 'all' | string) => void;
   selectedContinent: 'all' | ContinentId;
   onSelectContinent: (continent: 'all' | ContinentId) => void;
   selectedCategory: CuisineCategory;
@@ -75,6 +83,10 @@ export function RestaurantMarketplace({
   dishes,
   selectedCity,
   onSelectCity,
+  selectedProvince,
+  onSelectProvince,
+  selectedDistrict,
+  onSelectDistrict,
   selectedContinent,
   onSelectContinent,
   selectedCategory,
@@ -106,6 +118,32 @@ export function RestaurantMarketplace({
   );
   const [recentlyAddedId, setRecentlyAddedId] = useState<string | null>(null);
 
+  const provinces = useMemo(
+    () => (selectedCity === 'all' ? [] : getProvincesForCountry(selectedCity)),
+    [selectedCity]
+  );
+
+  const districts = useMemo(() => {
+    if (selectedCity === 'all' || selectedProvince === 'all') return [];
+    return getDistrictsForProvince(selectedCity, selectedProvince);
+  }, [selectedCity, selectedProvince]);
+
+  const activeHub = useMemo(
+    () => CITY_HUBS.find((h) => h.id === selectedCity),
+    [selectedCity]
+  );
+
+  const activeLocationLabel = useMemo(() => {
+    if (selectedCity === 'all') return 'Seçili Bölge';
+    return [
+      activeHub?.country ?? selectedCity,
+      selectedProvince !== 'all' ? selectedProvince : null,
+      selectedDistrict !== 'all' ? selectedDistrict : null,
+    ]
+      .filter(Boolean)
+      .join(' / ');
+  }, [selectedCity, activeHub, selectedProvince, selectedDistrict]);
+
   const handleQuickAddClick = (e: React.MouseEvent, dish: Dish) => {
     e.stopPropagation();
     onQuickAdd(dish);
@@ -118,6 +156,8 @@ export function RestaurantMarketplace({
   const activeFiltersCount = useMemo(() => {
     let count = 0;
     if (selectedCity !== 'all') count += 1;
+    if (selectedProvince !== 'all') count += 1;
+    if (selectedDistrict !== 'all') count += 1;
     if (selectedContinent !== 'all') count += 1;
     if (selectedCategory !== 'Tümü') count += 1;
     if (vegetarianOnly) count += 1;
@@ -128,6 +168,8 @@ export function RestaurantMarketplace({
     return count;
   }, [
     selectedCity,
+    selectedProvince,
+    selectedDistrict,
     selectedContinent,
     selectedCategory,
     vegetarianOnly,
@@ -237,62 +279,47 @@ export function RestaurantMarketplace({
           </div>
         </div>
 
-        {/* City / Country Tabs, All-Countries Selector & Search Row */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 mb-8 border-b border-[#E6E4DF]">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
-            <button
-              type="button"
-              onClick={() => {
-                onSelectCity('all');
-                onSelectContinent('all');
-              }}
-              className={`px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                selectedCity === 'all' && selectedContinent === 'all'
-                  ? 'bg-[#D9043D] text-white'
-                  : 'bg-white border border-[#E6E4DF] text-[#575550] hover:text-[#141413]'
-              }`}
-            >
-              Tüm Dünya ({CITY_HUBS.length})
-            </button>
-            {FEATURED_GLOBAL_HUBS.slice(0, 6).map((hub) => (
+        {/* City / Country Tabs, All-Countries + Province/District Selectors & Search Row */}
+        <div className="space-y-3 pb-6 mb-8 border-b border-[#E6E4DF]">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
               <button
-                key={hub.id}
                 type="button"
-                onClick={() => onSelectCity(hub.id)}
+                onClick={() => {
+                  onSelectCity('all');
+                  onSelectContinent('all');
+                }}
                 className={`px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  selectedCity === hub.id
+                  selectedCity === 'all' && selectedContinent === 'all'
                     ? 'bg-[#D9043D] text-white'
                     : 'bg-white border border-[#E6E4DF] text-[#575550] hover:text-[#141413]'
                 }`}
               >
-                {hub.name}
+                Tüm Dünya ({CITY_HUBS.length})
               </button>
-            ))}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
-            <div className="relative sm:w-56">
-              <Globe className="w-4 h-4 text-[#D9043D] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                value={selectedCity}
-                onChange={(e) => onSelectCity(e.target.value as CityId)}
-                aria-label="Tüm ülkelerden seç"
-                className="w-full pl-9 pr-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D]"
-              >
-                <CountrySelectOptions
-                  includeAllOption
-                  allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
-                />
-              </select>
+              {FEATURED_GLOBAL_HUBS.slice(0, 6).map((hub) => (
+                <button
+                  key={hub.id}
+                  type="button"
+                  onClick={() => onSelectCity(hub.id)}
+                  className={`px-3.5 py-2 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    selectedCity === hub.id
+                      ? 'bg-[#D9043D] text-white'
+                      : 'bg-white border border-[#E6E4DF] text-[#575550] hover:text-[#141413]'
+                  }`}
+                >
+                  {hub.country} ({hub.name})
+                </button>
+              ))}
             </div>
 
-            <div className="relative w-full sm:w-64">
+            <div className="relative w-full lg:w-72 shrink-0">
               <Search className="w-4 h-4 text-[#575550] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => onSearchChange(e.target.value)}
-                placeholder="Restoran, yemek veya ülke ara..."
+                placeholder="Restoran, yemek, il veya ilçe ara..."
                 aria-label="Restoran veya yemek ara"
                 className="w-full pl-9 pr-8 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-sm text-[#141413] placeholder:text-[#8A8780] focus:border-[#D9043D]"
               />
@@ -307,6 +334,61 @@ export function RestaurantMarketplace({
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="relative">
+              <Globe className="w-4 h-4 text-[#D9043D] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                value={selectedCity}
+                onChange={(e) => onSelectCity(e.target.value as CityId)}
+                aria-label="Tüm ülkelerden seç"
+                className="w-full pl-9 pr-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D]"
+              >
+                <CountrySelectOptions
+                  includeAllOption
+                  allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                />
+              </select>
+            </div>
+
+            <select
+              value={selectedProvince}
+              disabled={selectedCity === 'all'}
+              onChange={(e) => onSelectProvince(e.target.value)}
+              aria-label="İl veya şehir seç"
+              className="w-full px-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D] disabled:opacity-55 disabled:cursor-not-allowed"
+            >
+              <option value="all">
+                {selectedCity === 'all'
+                  ? 'İl / Şehir (Önce ülke seçin)'
+                  : `Tüm İller / Şehirler (${provinces.length})`}
+              </option>
+              {provinces.map((prov) => (
+                <option key={prov.name} value={prov.name}>
+                  {prov.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedDistrict}
+              disabled={selectedCity === 'all' || selectedProvince === 'all'}
+              onChange={(e) => onSelectDistrict(e.target.value)}
+              aria-label="İlçe veya semt seç"
+              className="w-full px-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D] disabled:opacity-55 disabled:cursor-not-allowed"
+            >
+              <option value="all">
+                {selectedProvince === 'all'
+                  ? 'İlçe / Semt (Önce il seçin)'
+                  : `Tüm İlçeler / Semtler (${districts.length})`}
+              </option>
+              {districts.map((dist) => (
+                <option key={dist} value={dist}>
+                  {dist}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -472,10 +554,10 @@ export function RestaurantMarketplace({
               restaurants.length === 0 ? (
                 <div className="bg-white border border-[#E6E4DF] rounded-xl py-16 px-6 text-center">
                   <p className="font-display text-xl font-medium text-[#141413] mb-2">
-                    Bu bölgede henüz aktif restoran listelenmiyor
+                    {activeLocationLabel} bölgesinde henüz aktif restoran listelenmiyor
                   </p>
                   <p className="text-sm text-[#575550] mb-6 max-w-md mx-auto">
-                    Seçili ülke teslimat ağımızda aktif! İlk yerel mutfak olarak kayıt olabilir veya filtreleri sıfırlayıp tüm küresel restoranları görüntüleyebilirsiniz.
+                    Seçili il ve ilçe teslimat ağımızda aktif! İlk yerel mutfak olarak kayıt olabilir veya filtreleri sıfırlayıp tüm küresel restoranları görüntüleyebilirsiniz.
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-3">
                     {onOpenRestaurantPortal && (
@@ -484,7 +566,7 @@ export function RestaurantMarketplace({
                         onClick={onOpenRestaurantPortal}
                         className="px-5 py-2.5 min-h-[40px] rounded-lg border border-[#D9043D] text-[#D9043D] text-sm font-medium hover:bg-[#D9043D] hover:text-white transition-colors cursor-pointer"
                       >
-                        Bu Ülkeden Restoran Üye Et
+                        Bu Bölgeden Restoran Üye Et
                       </button>
                     )}
                     <button

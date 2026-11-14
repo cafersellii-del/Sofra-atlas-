@@ -1,5 +1,6 @@
 import { CITY_HUBS, FEATURED_GLOBAL_HUBS } from '../data/catalog';
 import type { CityId } from '../types/food';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface FooterProps {
   onSelectCity: (cityId: CityId) => void;
@@ -32,6 +33,9 @@ export function Footer({
               bir online yemek siparişi deneyiminde buluşturan küresel
               gastronomi ağı.
             </p>
+            <div className="mt-4">
+              <PWAInstallButton variant="footer" />
+            </div>
           </div>
 
           <div className="md:col-span-4">

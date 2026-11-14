@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import {
@@ -20,6 +20,11 @@ import { ExtensionStudioModal } from './components/ExtensionStudioModal';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import {
+  type OrderStepNotification,
+  OrderStepNotifications,
+} from './components/OrderStepNotifications';
 import { OrdersPanel } from './components/OrdersPanel';
 import { RestaurantMarketplace } from './components/RestaurantMarketplace';
 import { RestaurantMenuModal } from './components/RestaurantMenuModal';
@@ -101,10 +106,27 @@ export default function App() {
   const [selectedCity, setSelectedCity] = useState<CityId>(
     initialUrlParams.city
   );
+  const [selectedProvince, setSelectedProvince] = useState<'all' | string>(
+    'all'
+  );
+  const [selectedDistrict, setSelectedDistrict] = useState<'all' | string>(
+    'all'
+  );
   const [selectedContinent, setSelectedContinent] = useState<
     'all' | ContinentId
   >('all');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+
+  const handleSelectCity = (nextCity: CityId) => {
+    setSelectedCity(nextCity);
+    setSelectedProvince('all');
+    setSelectedDistrict('all');
+  };
+
+  const handleSelectProvince = (nextProvince: 'all' | string) => {
+    setSelectedProvince(nextProvince);
+    setSelectedDistrict('all');
+  };
   const [selectedRestaurantFilter, setSelectedRestaurantFilter] = useState<
     string | null
   >(initialUrlParams.restaurant);
@@ -125,6 +147,10 @@ export default function App() {
     useState<PendingCartAddition | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isOrdersOpen, setIsOrdersOpen] = useState(false);
+  const [focusedOrderId, setFocusedOrderId] = useState<string | null>(null);
+  const [stepNotifications, setStepNotifications] = useState<
+    OrderStepNotification[]
+  >([]);
   const [isRestaurantPortalOpen, setIsRestaurantPortalOpen] = useState(false);
   const [isExtensionStudioOpen, setIsExtensionStudioOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(() => {
@@ -164,6 +190,41 @@ export default function App() {
       return INITIAL_ORDERS;
     }
   });
+
+  const prevOrderStatusesRef = useRef<Record<string, OrderStatus>>(
+    Object.fromEntries(orders.map((o) => [o.id, o.status]))
+  );
+
+  const pushStepNotification = useCallback((order: Order) => {
+    const uid = `${order.id}-${order.status}-${Date.now()}`;
+    setStepNotifications((prev) => [
+      {
+        uid,
+        orderId: order.id,
+        status: order.status,
+        cityName: order.cityName,
+        neighborhood: order.neighborhood,
+        courierName: order.courierName,
+        estimatedArrival: order.estimatedArrival,
+      },
+      ...prev.slice(0, 2),
+    ]);
+  }, []);
+
+  const dismissStepNotification = useCallback((uid: string) => {
+    setStepNotifications((prev) => prev.filter((n) => n.uid !== uid));
+  }, []);
+
+  useEffect(() => {
+    const prevMap = prevOrderStatusesRef.current;
+    for (const order of orders) {
+      const prevStatus = prevMap[order.id];
+      if (prevStatus && prevStatus !== order.status) {
+        pushStepNotification(order);
+      }
+      prevMap[order.id] = order.status;
+    }
+  }, [orders, pushStepNotification]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -284,6 +345,11 @@ export default function App() {
         });
 
         if (cloudOrders.length > 0) {
+          for (const co of cloudOrders) {
+            if (!prevOrderStatusesRef.current[co.id]) {
+              prevOrderStatusesRef.current[co.id] = co.status;
+            }
+          }
           setOrders((prev) => {
             const byId = new Map(prev.map((o) => [o.id, o]));
             for (const co of cloudOrders) {
@@ -523,6 +589,22 @@ export default function App() {
       }
       if (selectedCity !== 'all' && rest.cityId !== selectedCity) return false;
       if (
+        selectedCity !== 'all' &&
+        selectedProvince !== 'all' &&
+        rest.cityName.toLocaleLowerCase('tr') !==
+          selectedProvince.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
+      if (
+        selectedCity !== 'all' &&
+        selectedDistrict !== 'all' &&
+        rest.district.toLocaleLowerCase('tr') !==
+          selectedDistrict.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
+      if (
         selectedCity === 'all' &&
         selectedContinent !== 'all' &&
         hubContinentMap.get(rest.cityId) !== selectedContinent
@@ -582,6 +664,8 @@ export default function App() {
     allStorefronts,
     selectedRestaurantFilter,
     selectedCity,
+    selectedProvince,
+    selectedDistrict,
     selectedContinent,
     hubContinentMap,
     selectedCategory,
@@ -603,6 +687,22 @@ export default function App() {
         }
       }
       if (selectedCity !== 'all' && dish.cityId !== selectedCity) return false;
+      if (
+        selectedCity !== 'all' &&
+        selectedProvince !== 'all' &&
+        dish.cityName.toLocaleLowerCase('tr') !==
+          selectedProvince.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
+      if (
+        selectedCity !== 'all' &&
+        selectedDistrict !== 'all' &&
+        dish.district.toLocaleLowerCase('tr') !==
+          selectedDistrict.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
       if (
         selectedCity === 'all' &&
         selectedContinent !== 'all' &&
@@ -635,6 +735,8 @@ export default function App() {
     allCatalogDishes,
     selectedRestaurantFilter,
     selectedCity,
+    selectedProvince,
+    selectedDistrict,
     selectedContinent,
     hubContinentMap,
     selectedCategory,
@@ -770,10 +872,13 @@ export default function App() {
         ? { ...order, firestoreId: firestoreOrderId, ownerId: currentUser.uid }
         : order;
 
+    prevOrderStatusesRef.current[orderWithDocId.id] = orderWithDocId.status;
     setOrders((prev) => [orderWithDocId, ...prev]);
     setCartItems([]);
     setIsCartOpen(false);
+    setFocusedOrderId(orderWithDocId.id);
     setIsOrdersOpen(true);
+    pushStepNotification(orderWithDocId);
 
     if (currentUser && currentUser.emailVerified) {
       const restaurantName = sanitizeText(
@@ -913,6 +1018,8 @@ export default function App() {
 
   const handleResetFilters = () => {
     setSelectedCity('all');
+    setSelectedProvince('all');
+    setSelectedDistrict('all');
     setSelectedContinent('all');
     setSelectedCategory('Tümü');
     setSelectedRestaurantFilter(null);
@@ -966,10 +1073,14 @@ export default function App() {
         {!initialUrlParams.embed && (
           <Hero
             selectedCity={selectedCity}
+            selectedProvince={selectedProvince}
+            selectedDistrict={selectedDistrict}
             deliveryAddress={deliveryAddress}
             isMapsProviderActive={isMapsProviderActive}
             onChangeDeliveryAddress={setDeliveryAddress}
-            onSelectCity={setSelectedCity}
+            onSelectCity={handleSelectCity}
+            onSelectProvince={handleSelectProvince}
+            onSelectDistrict={setSelectedDistrict}
             onExploreRestaurants={handleExploreRestaurants}
           />
         )}
@@ -978,7 +1089,11 @@ export default function App() {
           restaurants={filteredRestaurants}
           dishes={filteredDishes}
           selectedCity={selectedCity}
-          onSelectCity={setSelectedCity}
+          onSelectCity={handleSelectCity}
+          selectedProvince={selectedProvince}
+          onSelectProvince={handleSelectProvince}
+          selectedDistrict={selectedDistrict}
+          onSelectDistrict={setSelectedDistrict}
           selectedContinent={selectedContinent}
           onSelectContinent={setSelectedContinent}
           selectedCategory={selectedCategory}
@@ -1009,7 +1124,11 @@ export default function App() {
         {!initialUrlParams.embed && (
           <WorldMapSection
             selectedCity={selectedCity}
-            onSelectCity={setSelectedCity}
+            selectedProvince={selectedProvince}
+            selectedDistrict={selectedDistrict}
+            onSelectCity={handleSelectCity}
+            onSelectProvince={handleSelectProvince}
+            onSelectDistrict={setSelectedDistrict}
             onExploreMenu={handleExploreRestaurants}
             activeRestaurants={activeRestaurants}
             onFilterRestaurant={(name) => setSelectedRestaurantFilter(name)}
@@ -1028,7 +1147,7 @@ export default function App() {
 
       {!initialUrlParams.embed && (
         <Footer
-          onSelectCity={setSelectedCity}
+          onSelectCity={handleSelectCity}
           onOpenOrders={() => setIsOrdersOpen(true)}
           onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
           onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
@@ -1048,6 +1167,8 @@ export default function App() {
         onShowOnMap={(rest) => {
           setActiveRestaurantModal(null);
           setSelectedCity(rest.cityId);
+          setSelectedProvince(rest.cityName || 'all');
+          setSelectedDistrict(rest.district || 'all');
           const mapEl = document.getElementById('harita');
           if (mapEl) mapEl.scrollIntoView({ behavior: 'smooth' });
         }}
@@ -1115,6 +1236,8 @@ export default function App() {
         items={cartItems}
         currencyMode={currencyMode}
         selectedCity={selectedCity}
+        selectedProvince={selectedProvince}
+        selectedDistrict={selectedDistrict}
         initialDeliveryAddress={deliveryAddress}
         isMapsProviderActive={isMapsProviderActive}
         currentUser={currentUser}
@@ -1133,9 +1256,24 @@ export default function App() {
         orders={orders}
         currencyMode={currencyMode}
         isMapsProviderActive={isMapsProviderActive}
-        onClose={() => setIsOrdersOpen(false)}
+        focusedOrderId={focusedOrderId}
+        onClose={() => {
+          setIsOrdersOpen(false);
+          setFocusedOrderId(null);
+        }}
         onAdvanceStatus={handleAdvanceOrderStatus}
       />
+
+      <OrderStepNotifications
+        notifications={stepNotifications}
+        onDismiss={dismissStepNotification}
+        onTrackOrder={(orderId) => {
+          setFocusedOrderId(orderId);
+          setIsOrdersOpen(true);
+        }}
+      />
+
+      <OfflineIndicator />
 
       <RestaurantPortalModal
         isOpen={isRestaurantPortalOpen}

@@ -1,4 +1,5 @@
 import { ShoppingBag } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   cartCount: number;
@@ -19,7 +20,7 @@ export function Header({
 }: HeaderProps) {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-[#E6E4DF]">
-      <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between gap-8">
+      <div className="max-w-[1280px] mx-auto px-6 h-16 flex items-center justify-between gap-4 md:gap-8">
         {/* Zone 1: Single-element brand wordmark */}
         <a
           href="#top"
@@ -68,8 +69,9 @@ export function Header({
           </button>
         </nav>
 
-        {/* Zone 3: Single primary action */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: Primary actions (PWA Download + Cart) */}
+        <div className="flex items-center gap-2 shrink-0">
+          <PWAInstallButton variant="header" />
           <button
             type="button"
             onClick={onOpenCart}
@@ -86,3 +88,4 @@ export function Header({
     </header>
   );
 }
+

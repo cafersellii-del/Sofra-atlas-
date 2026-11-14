@@ -29,6 +29,11 @@ import {
   FEATURED_GLOBAL_HUBS,
 } from '../data/catalog';
 import {
+  getCenterForProvince,
+  getDistrictsForProvince,
+  getProvincesForCountry,
+} from '../data/locations';
+import {
   CITY_HUB_ANCHORS,
   DEFAULT_MAP_ID,
   GOOGLE_MAPS_API_KEY,
@@ -41,7 +46,11 @@ import { CountrySelectOptions } from './CountrySelectOptions';
 
 interface WorldMapSectionProps {
   selectedCity: CityId;
+  selectedProvince: 'all' | string;
+  selectedDistrict: 'all' | string;
   onSelectCity: (cityId: CityId) => void;
+  onSelectProvince: (province: 'all' | string) => void;
+  onSelectDistrict: (district: 'all' | string) => void;
   onExploreMenu: () => void;
   activeRestaurants: RestaurantProfile[];
   onFilterRestaurant: (restaurantName: string) => void;
@@ -335,9 +344,13 @@ function DeliveryRouteLayer({
 
 function MapCameraSync({
   selectedCity,
+  selectedProvince,
+  selectedDistrict,
   selectedContinent,
 }: {
   selectedCity: CityId;
+  selectedProvince: 'all' | string;
+  selectedDistrict: 'all' | string;
   selectedContinent: 'all' | ContinentId;
 }) {
   const map = useMap('sofra-world-map');
@@ -345,10 +358,19 @@ function MapCameraSync({
   useEffect(() => {
     if (!map) return;
     if (selectedCity !== 'all') {
-      const anchor = CITY_HUB_ANCHORS[selectedCity];
-      if (anchor) {
-        map.panTo(anchor.center);
-        map.setZoom(12);
+      if (selectedProvince !== 'all') {
+        const provCenter = getCenterForProvince(selectedCity, selectedProvince);
+        map.panTo(provCenter);
+        map.setZoom(selectedDistrict !== 'all' ? 13 : 12);
+      } else if (selectedCity === 'istanbul') {
+        map.panTo({ lat: 39.0, lng: 35.2 });
+        map.setZoom(6);
+      } else {
+        const anchor = CITY_HUB_ANCHORS[selectedCity];
+        if (anchor) {
+          map.panTo(anchor.center);
+          map.setZoom(11);
+        }
       }
     } else if (selectedContinent !== 'all') {
       const cont = CONTINENTS.find((c) => c.id === selectedContinent);
@@ -360,15 +382,30 @@ function MapCameraSync({
       map.panTo({ lat: 24.0, lng: 18.0 });
       map.setZoom(2);
     }
-  }, [map, selectedCity, selectedContinent]);
+  }, [map, selectedCity, selectedProvince, selectedDistrict, selectedContinent]);
 
   return null;
 }
 
+const FEATURED_TURKEY_MAP_PROVINCES = new Set([
+  'İstanbul',
+  'Ankara',
+  'İzmir',
+  'Antalya',
+  'Gaziantep',
+  'Bursa',
+  'Trabzon',
+  'Adana',
+  'Konya',
+]);
+
 function WorldMapInteractive({
   selectedCity,
+  selectedProvince,
+  selectedDistrict,
   selectedContinent,
   onSelectCity,
+  onSelectProvince,
   onExploreMenu,
   activeRestaurants,
   onFilterRestaurant,
@@ -385,6 +422,35 @@ function WorldMapInteractive({
     CITY_HUB_ANCHORS[focusedCityId] ?? CITY_HUB_ANCHORS.istanbul;
   const activeHub =
     CITY_HUBS.find((h) => h.id === focusedCityId) ?? CITY_HUBS[0];
+
+  const activeCenter = useMemo(
+    () =>
+      getCenterForProvince(
+        focusedCityId,
+        selectedProvince !== 'all' ? selectedProvince : undefined
+      ),
+    [focusedCityId, selectedProvince]
+  );
+
+  const activeProvinceName =
+    selectedProvince !== 'all' ? selectedProvince : activeHub.name;
+  const activeLocationQueryLabel =
+    selectedDistrict !== 'all'
+      ? `${selectedDistrict}, ${activeProvinceName}`
+      : activeProvinceName;
+
+  const countryProvinces = useMemo(() => {
+    if (selectedCity === 'all') return [];
+    const all = getProvincesForCountry(selectedCity);
+    if (selectedCity === 'istanbul') {
+      return all.filter(
+        (p) =>
+          FEATURED_TURKEY_MAP_PROVINCES.has(p.name) ||
+          p.name.toLocaleLowerCase('tr') === selectedProvince.toLocaleLowerCase('tr')
+      );
+    }
+    return all;
+  }, [selectedCity, selectedProvince]);
 
   const visibleHubs = useMemo(() => {
     const base =
@@ -436,11 +502,11 @@ function WorldMapInteractive({
     resetSession,
   } = usePlacesAutocomplete(
     addressQuery,
-    activeAnchor.center,
+    activeCenter,
     selectedCity === 'all' ? undefined : [activeAnchor.regionCode]
   );
 
-  // Clear route & discovered places when switching city cleanly
+  // Clear route & discovered places when switching city or province cleanly
   useEffect(() => {
     setDiscoveredPlaces([]);
     setPlacesError(null);
@@ -448,7 +514,7 @@ function WorldMapInteractive({
     setDestinationPin(null);
     setRouteMetrics(null);
     setRouteError(null);
-  }, [selectedCity]);
+  }, [selectedCity, selectedProvince]);
 
   const handleSearchNearbyPlaces = useCallback(
     async (e?: React.FormEvent) => {
@@ -459,8 +525,8 @@ function WorldMapInteractive({
       setPlacesError(null);
 
       const queryText = placeQuery.trim()
-        ? `${placeQuery.trim()} ${activeHub.name}`
-        : `${activeHub.name} popüler restoranlar`;
+        ? `${placeQuery.trim()} ${activeLocationQueryLabel}`
+        : `${activeLocationQueryLabel} popüler restoranlar`;
 
       try {
         const request: google.maps.places.SearchByTextRequest = {
@@ -476,7 +542,7 @@ function WorldMapInteractive({
             'googleMapsURI',
           ],
           includedType: 'restaurant',
-          locationBias: activeAnchor.center,
+          locationBias: activeCenter,
           maxResultCount: 6,
           language: 'tr',
           region: activeAnchor.regionCode,
@@ -518,7 +584,7 @@ function WorldMapInteractive({
         setPlacesLoading(false);
       }
     },
-    [placesLib, placeQuery, activeHub.name, activeAnchor, map]
+    [placesLib, placeQuery, activeLocationQueryLabel, activeCenter, activeAnchor.regionCode, map]
   );
 
   const handleSelectSuggestion = async (
@@ -567,13 +633,27 @@ function WorldMapInteractive({
     }
   };
 
-  const cityPartners = useMemo(
-    () =>
-      selectedCity === 'all'
-        ? activeRestaurants
-        : activeRestaurants.filter((r) => r.cityId === selectedCity),
-    [activeRestaurants, selectedCity]
-  );
+  const cityPartners = useMemo(() => {
+    if (selectedCity === 'all') return activeRestaurants;
+    return activeRestaurants.filter((r) => {
+      if (r.cityId !== selectedCity) return false;
+      if (
+        selectedProvince !== 'all' &&
+        r.cityName.toLocaleLowerCase('tr') !==
+          selectedProvince.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
+      if (
+        selectedDistrict !== 'all' &&
+        r.district.toLocaleLowerCase('tr') !==
+          selectedDistrict.toLocaleLowerCase('tr')
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [activeRestaurants, selectedCity, selectedProvince, selectedDistrict]);
 
   const handleFocusPlace = (place: DiscoveredPlace) => {
     setOpenPlaceId(place.id);
@@ -615,6 +695,8 @@ function WorldMapInteractive({
             >
               <MapCameraSync
                 selectedCity={selectedCity}
+                selectedProvince={selectedProvince}
+                selectedDistrict={selectedDistrict}
                 selectedContinent={selectedContinent}
               />
 
@@ -622,6 +704,7 @@ function WorldMapInteractive({
                 const anchor = CITY_HUB_ANCHORS[hub.id];
                 if (!anchor) return null;
                 const isSelected = selectedCity === hub.id;
+                if (isSelected && countryProvinces.length > 1) return null;
                 return (
                   <HubMarkerWithInfo
                     key={hub.id}
@@ -642,6 +725,35 @@ function WorldMapInteractive({
                   />
                 );
               })}
+
+              {selectedCity !== 'all' &&
+                countryProvinces.map((prov) => {
+                  const isProvSelected =
+                    selectedProvince !== 'all'
+                      ? prov.name.toLocaleLowerCase('tr') ===
+                        selectedProvince.toLocaleLowerCase('tr')
+                      : prov.name === activeHub.name;
+                  return (
+                    <AdvancedMarker
+                      key={`prov-${prov.name}`}
+                      position={prov.center}
+                      onClick={() => {
+                        onSelectProvince(prov.name);
+                        setOpenHubInfoId(null);
+                        setOpenPlaceId(null);
+                      }}
+                      title={`${prov.name} — ${prov.districts.length} ilçe`}
+                      zIndex={isProvSelected ? 35 : 18}
+                    >
+                      <Pin
+                        background={isProvSelected ? '#D9043D' : '#141413'}
+                        borderColor={isProvSelected ? '#9A032B' : '#2C2B28'}
+                        glyphColor="#FAF9F7"
+                        scale={isProvSelected ? 1.2 : 0.95}
+                      />
+                    </AdvancedMarker>
+                  );
+                })}
 
               {discoveredPlaces.map((place) => (
                 <DiscoveredPlaceMarker
@@ -673,7 +785,7 @@ function WorldMapInteractive({
 
               {selectedCity !== 'all' && destinationPin && (
                 <DeliveryRouteLayer
-                  origin={activeAnchor.center}
+                  origin={activeCenter}
                   destination={destinationPin.location}
                   onMetricsChange={setRouteMetrics}
                   onRouteError={setRouteError}
@@ -690,7 +802,7 @@ function WorldMapInteractive({
               <Navigation className="w-4 h-4 text-[#D9043D] shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <p className="text-xs font-medium text-[#141413] truncate">
-                  {activeHub.name} → {destinationPin?.label}
+                  {activeLocationQueryLabel} → {destinationPin?.label}
                 </p>
                 {routeMetrics && (
                   <p className="font-mono tabular-nums text-xs text-[#D9043D] mt-0.5">
@@ -725,23 +837,29 @@ function WorldMapInteractive({
       {/* Right: Places Search, Address Autocomplete & Partner List (4 cols) */}
       <div className="lg:col-span-4 bg-white border border-[#E6E4DF] rounded-xl p-5 flex flex-col justify-between space-y-5">
         <div className="space-y-5">
-          {/* Active city summary */}
+          {/* Active city/province/district summary */}
           <div className="pb-4 border-b border-[#E6E4DF]">
             <p className="text-[11px] font-medium uppercase tracking-wider text-[#575550]">
               {selectedCity === 'all'
-                ? 'Odak Şehir (Varsayılan)'
+                ? 'Odak Bölge (Varsayılan)'
                 : 'Seçili Teslimat Merkezi'}
             </p>
             <div className="flex items-baseline justify-between gap-2 mt-1">
               <h3 className="font-display text-xl font-semibold text-[#141413]">
-                {activeHub.name}, {activeHub.country}
+                {activeProvinceName}, {activeHub.country}
               </h3>
               <span className="font-mono tabular-nums text-xs text-[#D9043D] font-medium">
                 {activeHub.avgDelivery}
               </span>
             </div>
             <p className="text-xs text-[#575550] mt-1">
-              {activeHub.districtLabel}
+              {selectedDistrict !== 'all'
+                ? `Seçili İlçe / Semt: ${selectedDistrict}`
+                : selectedProvince !== 'all'
+                  ? getDistrictsForProvince(focusedCityId, selectedProvince)
+                      .slice(0, 4)
+                      .join(' · ')
+                  : activeHub.districtLabel}
             </p>
           </div>
 
@@ -760,7 +878,7 @@ function WorldMapInteractive({
                 type="text"
                 value={addressQuery}
                 onChange={(e) => setAddressQuery(e.target.value)}
-                placeholder={`${activeHub.name} içinde cadde veya semt yazın...`}
+                placeholder={`${activeLocationQueryLabel} içinde cadde veya semt yazın...`}
                 className="w-full pl-9 pr-8 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-xs text-[#141413] placeholder:text-[#8A8780] focus:border-[#D9043D]"
               />
               {suggestionsLoading && (
@@ -907,13 +1025,27 @@ function WorldMapInteractive({
 
 export function WorldMapSection({
   selectedCity,
+  selectedProvince,
+  selectedDistrict,
   onSelectCity,
+  onSelectProvince,
+  onSelectDistrict,
   onExploreMenu,
   activeRestaurants,
   onFilterRestaurant,
   isMapsProviderActive,
 }: WorldMapSectionProps) {
   const [selectedContinent, setSelectedContinent] = useState<'all' | ContinentId>('all');
+
+  const provinces = useMemo(
+    () => (selectedCity === 'all' ? [] : getProvincesForCountry(selectedCity)),
+    [selectedCity]
+  );
+
+  const districts = useMemo(() => {
+    if (selectedCity === 'all' || selectedProvince === 'all') return [];
+    return getDistrictsForProvince(selectedCity, selectedProvince);
+  }, [selectedCity, selectedProvince]);
 
   return (
     <section
@@ -924,35 +1056,75 @@ export function WorldMapSection({
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-6">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-[#575550] mb-2">
-              Google Maps · Küresel Teslimat Ağı ({CITY_HUBS.length} Ülke)
+              Google Maps · Küresel Teslimat Ağı ({CITY_HUBS.length} Ülke · 81 İl &amp; İlçeler)
             </p>
             <h2
               className="font-display text-2xl sm:text-3xl font-semibold text-[#141413] tracking-tight"
               style={{ textWrap: 'balance' }}
             >
-              6 kıtada tüm ülkeleri, merkezleri ve teslimat rotasını haritada keşfedin
+              6 kıtada ülkeleri, illeri, ilçeleri ve teslimat rotasını haritada keşfedin
             </h2>
           </div>
 
-          <div className="relative w-full lg:w-72 shrink-0">
-            <Globe className="w-4 h-4 text-[#D9043D] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto shrink-0">
+            <div className="relative sm:w-52">
+              <Globe className="w-4 h-4 text-[#D9043D] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                value={selectedCity}
+                onChange={(e) => {
+                  const nextId = e.target.value as CityId;
+                  onSelectCity(nextId);
+                  if (nextId !== 'all') {
+                    const found = CITY_HUBS.find((h) => h.id === nextId);
+                    if (found) setSelectedContinent(found.continent);
+                  }
+                }}
+                aria-label="Haritada ülke seç"
+                className="w-full pl-9 pr-2 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D]"
+              >
+                <CountrySelectOptions
+                  includeAllOption
+                  allLabel={`Tüm Dünya (${CITY_HUBS.length} Ülke)`}
+                />
+              </select>
+            </div>
+
             <select
-              value={selectedCity}
-              onChange={(e) => {
-                const nextId = e.target.value as CityId;
-                onSelectCity(nextId);
-                if (nextId !== 'all') {
-                  const found = CITY_HUBS.find((h) => h.id === nextId);
-                  if (found) setSelectedContinent(found.continent);
-                }
-              }}
-              aria-label="Haritada ülke seç"
-              className="w-full pl-9 pr-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D]"
+              value={selectedProvince}
+              disabled={selectedCity === 'all'}
+              onChange={(e) => onSelectProvince(e.target.value)}
+              aria-label="Haritada il veya şehir seç"
+              className="sm:w-44 px-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D] disabled:opacity-55 disabled:cursor-not-allowed"
             >
-              <CountrySelectOptions
-                includeAllOption
-                allLabel={`Tüm Dünya (${CITY_HUBS.length} Ülke)`}
-              />
+              <option value="all">
+                {selectedCity === 'all'
+                  ? 'İl / Şehir (Önce ülke)'
+                  : `Tüm İller (${provinces.length})`}
+              </option>
+              {provinces.map((prov) => (
+                <option key={prov.name} value={prov.name}>
+                  {prov.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedDistrict}
+              disabled={selectedCity === 'all' || selectedProvince === 'all'}
+              onChange={(e) => onSelectDistrict(e.target.value)}
+              aria-label="Haritada ilçe veya semt seç"
+              className="sm:w-44 px-3 py-2 min-h-[40px] rounded-lg bg-white border border-[#E6E4DF] text-xs font-medium text-[#141413] focus:border-[#D9043D] disabled:opacity-55 disabled:cursor-not-allowed"
+            >
+              <option value="all">
+                {selectedProvince === 'all'
+                  ? 'İlçe / Semt (Önce il)'
+                  : `Tüm İlçeler (${districts.length})`}
+              </option>
+              {districts.map((dist) => (
+                <option key={dist} value={dist}>
+                  {dist}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -999,8 +1171,12 @@ export function WorldMapSection({
         {isMapsProviderActive && GOOGLE_MAPS_API_KEY ? (
           <WorldMapInteractive
             selectedCity={selectedCity}
+            selectedProvince={selectedProvince}
+            selectedDistrict={selectedDistrict}
             selectedContinent={selectedContinent}
             onSelectCity={onSelectCity}
+            onSelectProvince={onSelectProvince}
+            onSelectDistrict={onSelectDistrict}
             onExploreMenu={onExploreMenu}
             activeRestaurants={activeRestaurants}
             onFilterRestaurant={onFilterRestaurant}

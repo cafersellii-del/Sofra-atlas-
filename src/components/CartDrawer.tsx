@@ -18,6 +18,11 @@ import {
 } from 'lucide-react';
 import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { CITY_HUBS, CURATED_RESTAURANT_META } from '../data/catalog';
+import {
+  getCenterForProvince,
+  getDistrictsForProvince,
+  getProvincesForCountry,
+} from '../data/locations';
 import { auth, googleProvider } from '../lib/firebase';
 import {
   CITY_HUB_ANCHORS,
@@ -54,6 +59,8 @@ interface CartDrawerProps {
   items: CartItem[];
   currencyMode: CurrencyMode;
   selectedCity: CityId;
+  selectedProvince?: 'all' | string;
+  selectedDistrict?: 'all' | string;
   initialDeliveryAddress?: string;
   isMapsProviderActive?: boolean;
   currentUser: User | null;
@@ -84,26 +91,29 @@ interface Pending3DSSession {
 
 function CheckoutAddressAutocomplete({
   deliveryCityId,
+  deliveryProvince,
   address,
   onSelectAddress,
 }: {
   deliveryCityId: Exclude<CityId, 'all'>;
+  deliveryProvince: string;
   address: string;
   onSelectAddress: (formatted: string) => void;
 }) {
   const placesLib = useMapsLibrary('places');
   const [showSuggestions, setShowSuggestions] = useState(true);
   const anchor = CITY_HUB_ANCHORS[deliveryCityId] ?? CITY_HUB_ANCHORS.istanbul;
+  const center = getCenterForProvince(deliveryCityId, deliveryProvince);
 
   const { suggestions, resetSession } = usePlacesAutocomplete(
     showSuggestions ? address : '',
-    anchor.center,
+    center,
     [anchor.regionCode]
   );
 
   useEffect(() => {
     setShowSuggestions(true);
-  }, [deliveryCityId]);
+  }, [deliveryCityId, deliveryProvince]);
 
   if (!placesLib || suggestions.length === 0 || !showSuggestions) return null;
 
@@ -149,6 +159,8 @@ export function CartDrawer({
   items,
   currencyMode,
   selectedCity,
+  selectedProvince = 'all',
+  selectedDistrict = 'all',
   initialDeliveryAddress = '',
   isMapsProviderActive = false,
   currentUser,
@@ -169,10 +181,23 @@ export function CartDrawer({
   const defaultCityId: Exclude<CityId, 'all'> =
     items[0]?.dish.cityId ??
     (selectedCity === 'all' ? 'istanbul' : selectedCity);
+  const initialProvinces = getProvincesForCountry(defaultCityId);
+  const defaultProvince =
+    items[0]?.dish.cityName ||
+    (selectedProvince !== 'all'
+      ? selectedProvince
+      : initialProvinces[0]?.name ?? 'İstanbul');
+  const defaultDistricts = getDistrictsForProvince(defaultCityId, defaultProvince);
+  const defaultDistrict =
+    items[0]?.dish.district ||
+    (selectedDistrict !== 'all'
+      ? selectedDistrict
+      : defaultDistricts[0] ?? 'Merkez');
 
   const [deliveryCityId, setDeliveryCityId] =
     useState<Exclude<CityId, 'all'>>(defaultCityId);
-  const [neighborhood, setNeighborhood] = useState('');
+  const [deliveryProvince, setDeliveryProvince] = useState(defaultProvince);
+  const [neighborhood, setNeighborhood] = useState(defaultDistrict);
   const [address, setAddress] = useState(initialDeliveryAddress);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -204,12 +229,6 @@ export function CartDrawer({
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    const hub =
-      CITY_HUBS.find((c) => c.id === deliveryCityId) ?? CITY_HUBS[0];
-    setNeighborhood(hub.neighborhoods[0]);
-  }, [deliveryCityId]);
-
-  useEffect(() => {
     if (initialDeliveryAddress && !address.trim()) {
       setAddress(initialDeliveryAddress);
     }
@@ -231,7 +250,15 @@ export function CartDrawer({
 
   useEffect(() => {
     if (items.length > 0) {
-      setDeliveryCityId(items[0].dish.cityId);
+      const nextCityId = items[0].dish.cityId;
+      const nextProvList = getProvincesForCountry(nextCityId);
+      const nextProv =
+        items[0].dish.cityName || nextProvList[0]?.name || 'Merkez';
+      const nextDistList = getDistrictsForProvince(nextCityId, nextProv);
+      const nextDist = items[0].dish.district || nextDistList[0] || 'Merkez';
+      setDeliveryCityId(nextCityId);
+      setDeliveryProvince(nextProv);
+      setNeighborhood(nextDist);
     } else {
       setStep('cart');
       setPending3DS(null);
@@ -251,6 +278,27 @@ export function CartDrawer({
 
   const activeHub =
     CITY_HUBS.find((c) => c.id === deliveryCityId) ?? CITY_HUBS[0];
+  const provinceOptions = getProvincesForCountry(deliveryCityId);
+  const districtOptions = getDistrictsForProvince(
+    deliveryCityId,
+    deliveryProvince
+  );
+  const effectiveProvinceOptions = provinceOptions.some(
+    (p) => p.name === deliveryProvince
+  )
+    ? provinceOptions
+    : [
+        {
+          name: deliveryProvince,
+          center: activeHub.center,
+          districts: districtOptions,
+        },
+        ...provinceOptions,
+      ];
+  const effectiveDistrictOptions = districtOptions.includes(neighborhood)
+    ? districtOptions
+    : [neighborhood, ...districtOptions].filter(Boolean);
+
   const displayCityId = items[0]?.dish.cityId ?? deliveryCityId;
   const activeRestaurantName = items[0]?.dish.restaurantName ?? '';
   const restaurantMeta = CURATED_RESTAURANT_META[activeRestaurantName];
@@ -333,7 +381,7 @@ export function CartDrawer({
       ownerId: currentUser?.uid,
       createdAt: 'Az önce',
       cityId: activeHub.id,
-      cityName: activeHub.name,
+      cityName: deliveryProvince || activeHub.name,
       neighborhood,
       address: address.trim(),
       customerName: customerName.trim(),
@@ -1062,47 +1110,85 @@ export function CartDrawer({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
                   <label
                     htmlFor="checkout-city"
                     className="block text-xs font-medium text-[#575550] mb-1.5"
                   >
-                    Teslimat Ülkesi & Şehri
+                    Teslimat Ülkesi
                   </label>
                   <select
                     id="checkout-city"
                     value={deliveryCityId}
-                    onChange={(e) =>
-                      setDeliveryCityId(
-                        e.target.value as Exclude<CityId, 'all'>
-                      )
-                    }
+                    onChange={(e) => {
+                      const nextCity = e.target.value as Exclude<CityId, 'all'>;
+                      const nextProvs = getProvincesForCountry(nextCity);
+                      const firstProv = nextProvs[0]?.name ?? 'Merkez';
+                      const nextDists = getDistrictsForProvince(
+                        nextCity,
+                        firstProv
+                      );
+                      setDeliveryCityId(nextCity);
+                      setDeliveryProvince(firstProv);
+                      setNeighborhood(nextDists[0] ?? 'Merkez');
+                    }}
                     className="w-full px-3 py-2 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
                   >
                     <CountrySelectOptions />
                   </select>
                 </div>
 
-                <div>
-                  <label
-                    htmlFor="checkout-district"
-                    className="block text-xs font-medium text-[#575550] mb-1.5"
-                  >
-                    Semt / Bölge
-                  </label>
-                  <select
-                    id="checkout-district"
-                    value={neighborhood}
-                    onChange={(e) => setNeighborhood(e.target.value)}
-                    className="w-full px-3 py-2 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
-                  >
-                    {activeHub.neighborhoods.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label
+                      htmlFor="checkout-province"
+                      className="block text-xs font-medium text-[#575550] mb-1.5"
+                    >
+                      İl / Şehir
+                    </label>
+                    <select
+                      id="checkout-province"
+                      value={deliveryProvince}
+                      onChange={(e) => {
+                        const nextProv = e.target.value;
+                        const nextDists = getDistrictsForProvince(
+                          deliveryCityId,
+                          nextProv
+                        );
+                        setDeliveryProvince(nextProv);
+                        setNeighborhood(nextDists[0] ?? 'Merkez');
+                      }}
+                      className="w-full px-3 py-2 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                    >
+                      {effectiveProvinceOptions.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="checkout-district"
+                      className="block text-xs font-medium text-[#575550] mb-1.5"
+                    >
+                      İlçe / Semt
+                    </label>
+                    <select
+                      id="checkout-district"
+                      value={neighborhood}
+                      onChange={(e) => setNeighborhood(e.target.value)}
+                      className="w-full px-3 py-2 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
+                    >
+                      {effectiveDistrictOptions.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1125,6 +1211,7 @@ export function CartDrawer({
                 {isMapsProviderActive && (
                   <CheckoutAddressAutocomplete
                     deliveryCityId={deliveryCityId}
+                    deliveryProvince={deliveryProvince}
                     address={address}
                     onSelectAddress={setAddress}
                   />
