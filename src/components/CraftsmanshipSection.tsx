@@ -2,12 +2,14 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 interface CraftsmanshipSectionProps {
   onOpenRestaurantPortal: () => void;
+  onOpenCourierPortal: () => void;
   onOpenExtensionStudio: () => void;
   registeredCount: number;
 }
 
 export function CraftsmanshipSection({
   onOpenRestaurantPortal,
+  onOpenCourierPortal,
   onOpenExtensionStudio,
   registeredCount,
 }: CraftsmanshipSectionProps) {
@@ -64,6 +66,13 @@ export function CraftsmanshipSection({
               className="px-5 py-2.5 min-h-[42px] rounded-lg border border-[#D9043D] text-[#D9043D] text-sm font-medium hover:bg-[#D9043D] hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               {t.craftPartnerBtn}{registeredCount > 0 ? ` (${registeredCount})` : ''}
+            </button>
+            <button
+              type="button"
+              onClick={onOpenCourierPortal}
+              className="px-5 py-2.5 min-h-[42px] rounded-lg bg-[#D9043D] text-white text-sm font-medium hover:bg-[#B80032] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              {t.craftCourierBtn}
             </button>
           </div>
         </div>

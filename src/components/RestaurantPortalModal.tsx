@@ -18,7 +18,10 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import {
+  Bike,
   CheckCircle2,
+  ClipboardList,
+  Clock,
   Eye,
   EyeOff,
   LogOut,
@@ -54,6 +57,7 @@ import type {
   RestaurantProfile,
 } from '../types/food';
 import { CountrySelectOptions } from './CountrySelectOptions';
+import { CourierWorkspace } from './CourierWorkspace';
 import { SupportStaffInbox } from './SupportStaffInbox';
 import {
   parseIngredients,
@@ -65,8 +69,18 @@ import { DishImage } from './DishImage';
 interface RestaurantPortalModalProps {
   isOpen: boolean;
   orders?: Order[];
+  initialRole?: 'restaurant' | 'courier';
   onClose: () => void;
   onOpenExtensionStudio: () => void;
+  onAdvanceOrderStatus?: (orderId: string) => void;
+  onAcceptOrderCourier?: (
+    orderId: string,
+    courierId: string,
+    courierName: string
+  ) => void;
+  onPickupOrderCourier?: (orderId: string) => void;
+  onDeliverOrderCourier?: (orderId: string) => void;
+  onOpenCourierChat?: (order: Order) => void;
 }
 
 const PARTNER_CATEGORIES = CUISINE_CATEGORIES.filter(
@@ -76,13 +90,24 @@ const PARTNER_CATEGORIES = CUISINE_CATEGORIES.filter(
 export function RestaurantPortalModal({
   isOpen,
   orders = [],
+  initialRole = 'restaurant',
   onClose,
   onOpenExtensionStudio,
+  onAdvanceOrderStatus,
+  onAcceptOrderCourier,
+  onPickupOrderCourier,
+  onDeliverOrderCourier,
+  onOpenCourierChat,
 }: RestaurantPortalModalProps) {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+
+  const [partnerRole, setPartnerRole] = useState<'restaurant' | 'courier'>(
+    initialRole
+  );
+  const [orderScope, setOrderScope] = useState<'mine' | 'all'>('mine');
 
   const [restaurant, setRestaurant] = useState<RestaurantProfile | null>(null);
   const [privateContact, setPrivateContact] =
@@ -90,7 +115,9 @@ export function RestaurantPortalModal({
   const [myDishes, setMyDishes] = useState<PartnerDishRecord[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'menu' | 'profile' | 'support'>('menu');
+  const [activeTab, setActiveTab] = useState<
+    'menu' | 'orders' | 'profile' | 'support'
+  >('menu');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -138,6 +165,11 @@ export function RestaurantPortalModal({
     });
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPartnerRole(initialRole);
+  }, [isOpen, initialRole]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -595,6 +627,27 @@ export function RestaurantPortalModal({
     }
   };
 
+  const pendingCourierCount = orders.filter(
+    (o) =>
+      o.status !== 'delivered' &&
+      !o.courierId &&
+      (!o.courierStatus || o.courierStatus === 'waiting_courier')
+  ).length;
+
+  const restaurantMatchedOrders = restaurant
+    ? orders.filter((o) =>
+        o.items.some(
+          (it) =>
+            it.restaurantName.toLocaleLowerCase('tr') ===
+            restaurant.name.toLocaleLowerCase('tr')
+        )
+      )
+    : [];
+  const visibleKitchenOrders =
+    orderScope === 'mine' && restaurantMatchedOrders.length > 0
+      ? restaurantMatchedOrders
+      : orders;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-[2px]"
@@ -608,49 +661,129 @@ export function RestaurantPortalModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Modal Header */}
-        <div className="sticky top-0 z-20 bg-white border-b border-[#E6E4DF] px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <Store className="w-5 h-5 text-[#D9043D] shrink-0" />
-            <div className="min-w-0">
-              <h2
-                id="restaurant-portal-title"
-                className="font-display text-lg font-semibold text-[#141413] truncate"
+        <div className="sticky top-0 z-20 bg-white border-b border-[#E6E4DF] px-6 py-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              {partnerRole === 'courier' ? (
+                <Bike className="w-5 h-5 text-[#D9043D] shrink-0" />
+              ) : (
+                <Store className="w-5 h-5 text-[#D9043D] shrink-0" />
+              )}
+              <div className="min-w-0">
+                <h2
+                  id="restaurant-portal-title"
+                  className="font-display text-lg font-semibold text-[#141413] truncate"
+                >
+                  Restoran & Kurye İş Ortağı Portalı
+                </h2>
+                <p className="text-xs text-[#575550] truncate">
+                  {user
+                    ? `${user.displayName ?? user.email} oturumu açık`
+                    : 'Restoran mutfağınızı yönetin veya kurye olarak anlık sipariş kabul edin'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {user && (
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-medium text-[#575550] hover:text-[#141413] hover:bg-[#FAF9F7] cursor-pointer whitespace-nowrap"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Çıkış</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="İş ortağı panelini kapat"
+                className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
               >
-                Restoran Üyeliği & Mutfak Paneli
-              </h2>
-              <p className="text-xs text-[#575550] truncate">
-                {user
-                  ? `${user.displayName ?? user.email} oturumu açık`
-                  : 'Dünya genelindeki mutfağınızı Sofra Atlas kataloğuna ekleyin'}
-              </p>
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {user && (
+          {/* Partner Role Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div
+              role="tablist"
+              aria-label="İş ortağı rolü"
+              className="inline-flex items-center gap-1 p-1 bg-[#EFECE6] rounded-lg"
+            >
               <button
                 type="button"
-                onClick={handleSignOut}
-                className="inline-flex items-center gap-1.5 px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-medium text-[#575550] hover:text-[#141413] hover:bg-[#FAF9F7] cursor-pointer whitespace-nowrap"
+                role="tab"
+                aria-selected={partnerRole === 'restaurant'}
+                onClick={() => {
+                  setPartnerRole('restaurant');
+                  setFormError('');
+                  setFeedbackMessage('');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  partnerRole === 'restaurant'
+                    ? 'bg-white text-[#141413] shadow-xs'
+                    : 'text-[#575550] hover:text-[#141413]'
+                }`}
               >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Çıkış</span>
+                <Store className="w-3.5 h-3.5 text-[#D9043D]" />
+                <span>Restoran İş Ortağı</span>
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Restoran panelini kapat"
-              className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={partnerRole === 'courier'}
+                onClick={() => {
+                  setPartnerRole('courier');
+                  setFormError('');
+                  setFeedbackMessage('');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  partnerRole === 'courier'
+                    ? 'bg-white text-[#141413] shadow-xs'
+                    : 'text-[#575550] hover:text-[#141413]'
+                }`}
+              >
+                <Bike className="w-3.5 h-3.5 text-[#D9043D]" />
+                <span>Kurye İş Ortağı & Sipariş Kabulü</span>
+                {pendingCourierCount > 0 && (
+                  <span className="font-mono tabular-nums text-[11px] font-semibold text-[#D9043D]">
+                    ({pendingCourierCount})
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <span className="text-[11px] text-[#575550] hidden sm:inline">
+              {partnerRole === 'courier'
+                ? 'Açık sipariş kuyruğu · Kabul / Teslimat Akışı'
+                : 'Menü yönetimi · Gelen mutfak siparişleri'}
+            </span>
           </div>
         </div>
 
         {/* Body */}
         <div className="p-6 sm:p-8 space-y-6">
-          {!authReady || dataLoading ? (
+          {partnerRole === 'courier' ? (
+            <CourierWorkspace
+              isOpen={isOpen && partnerRole === 'courier'}
+              user={user}
+              authReady={authReady}
+              orders={orders}
+              onAcceptOrderLocal={(orderId, courierId, courierName) =>
+                onAcceptOrderCourier?.(orderId, courierId, courierName)
+              }
+              onPickupOrderLocal={(orderId) =>
+                onPickupOrderCourier?.(orderId)
+              }
+              onDeliverOrderLocal={(orderId) =>
+                onDeliverOrderCourier?.(orderId)
+              }
+              onOpenCourierChat={onOpenCourierChat}
+            />
+          ) : !authReady || dataLoading ? (
             <div className="py-12 text-center text-sm text-[#575550]">
               Restoran hesap bilgileri yükleniyor...
             </div>
@@ -1016,8 +1149,8 @@ export function RestaurantPortalModal({
               </div>
 
               {/* Navigation Tabs */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="inline-flex items-center gap-1 p-1 bg-[#EFECE6] rounded-lg">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex flex-wrap items-center gap-1 p-1 bg-[#EFECE6] rounded-lg">
                   <button
                     type="button"
                     onClick={() => {
@@ -1031,6 +1164,23 @@ export function RestaurantPortalModal({
                     }`}
                   >
                     Menüdeki Tabaklar ({myDishes.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('orders');
+                      setFormError('');
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                      activeTab === 'orders'
+                        ? 'bg-white text-[#141413] shadow-xs'
+                        : 'text-[#575550] hover:text-[#141413]'
+                    }`}
+                  >
+                    <ClipboardList className="w-3.5 h-3.5 text-[#D9043D]" />
+                    <span>
+                      Gelen Siparişler ({orders.filter((o) => o.status !== 'delivered').length})
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -1364,6 +1514,113 @@ export function RestaurantPortalModal({
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'orders' ? (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-display text-base font-semibold text-[#141413]">
+                        Mutfak Sipariş Onay & Kurye Durumu
+                      </h4>
+                      <p className="text-xs text-[#575550]">
+                        Yeni siparişleri mutfakta hazırlamaya alın; kurye kabul durumunu anlık izleyin.
+                      </p>
+                    </div>
+                    {restaurantMatchedOrders.length > 0 && (
+                      <div className="inline-flex items-center gap-1 p-1 bg-[#EFECE6] rounded-lg">
+                        <button
+                          type="button"
+                          onClick={() => setOrderScope('mine')}
+                          className={`px-3 py-1 min-h-[32px] text-xs font-medium rounded-md cursor-pointer ${
+                            orderScope === 'mine'
+                              ? 'bg-white text-[#141413]'
+                              : 'text-[#575550]'
+                          }`}
+                        >
+                          Bu Restoran ({restaurantMatchedOrders.length})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOrderScope('all')}
+                          className={`px-3 py-1 min-h-[32px] text-xs font-medium rounded-md cursor-pointer ${
+                            orderScope === 'all'
+                              ? 'bg-white text-[#141413]'
+                              : 'text-[#575550]'
+                          }`}
+                        >
+                          Tüm Ağ ({orders.length})
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {visibleKitchenOrders.length === 0 ? (
+                    <div className="border border-dashed border-[#E6E4DF] rounded-xl py-10 px-6 text-center text-xs text-[#575550]">
+                      Henüz aktif sipariş bulunmuyor.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-[#E6E4DF] border border-[#E6E4DF] rounded-xl overflow-hidden bg-white">
+                      {visibleKitchenOrders.map((order) => {
+                        const statusLabel =
+                          order.status === 'received'
+                            ? 'Onay Bekliyor'
+                            : order.status === 'preparing'
+                              ? 'Mutfakta Hazırlanıyor'
+                              : order.status === 'on_the_way'
+                                ? 'Kuryede / Yolda'
+                                : 'Teslim Edildi';
+                        return (
+                          <div
+                            key={order.id}
+                            className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                          >
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-mono tabular-nums font-semibold text-[#D9043D]">
+                                  #{order.id}
+                                </span>
+                                <span className="text-[#8A8780]">·</span>
+                                <span className="font-medium text-[#141413]">
+                                  {order.cityName} · {order.neighborhood}
+                                </span>
+                                <span className="text-[#8A8780]">·</span>
+                                <span className="text-[#575550]">
+                                  {statusLabel}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium text-[#141413] truncate">
+                                {order.items
+                                  .map((it) => `${it.quantity}× ${it.dishName}`)
+                                  .join(', ')}
+                              </p>
+                              <p className="text-xs text-[#575550] flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-[#D9043D]" />
+                                <span>
+                                  Kurye: {order.courierName || 'Kurye Bekleniyor'} ·{' '}
+                                  {order.estimatedArrival}
+                                </span>
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2.5 shrink-0">
+                              <span className="font-mono tabular-nums text-sm font-semibold text-[#141413]">
+                                {Math.round(order.totalTry).toLocaleString('tr-TR')} ₺
+                              </span>
+                              {order.status === 'received' && onAdvanceOrderStatus && (
+                                <button
+                                  type="button"
+                                  onClick={() => onAdvanceOrderStatus(order.id)}
+                                  className="px-3.5 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] transition-colors cursor-pointer whitespace-nowrap"
+                                >
+                                  Mutfağa Al / Hazırla
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

@@ -236,6 +236,7 @@ export interface UITranslations {
   craftTitle: string;
   craftExtensionBtn: string;
   craftPartnerBtn: string;
+  craftCourierBtn: string;
   step1Badge: string;
   step1Title: string;
   step2Badge: string;
@@ -262,6 +263,7 @@ export interface UITranslations {
   footerStandardsLink: string;
   footerOrdersLink: string;
   footerExtensionLink: string;
+  footerCourierLink: string;
   liveSupportBtn: string;
   liveSupportTitle: string;
   liveSupportSubtitle: string;
@@ -280,7 +282,7 @@ const tr: UITranslations = {
   navRestaurants: 'Restoranlar',
   navMap: 'Harita',
   navOrders: 'Siparişlerim',
-  navRestaurantPortal: 'Restoran Üyeliği',
+  navRestaurantPortal: 'Restoran & Kurye Ortağı',
   navAdmin: 'Yönetici Paneli',
   memberLogin: 'Üye Girişi',
   myAccount: 'Hesabım',
@@ -348,7 +350,8 @@ const tr: UITranslations = {
   craftEyebrow: 'Küresel Teslimat Standardı',
   craftTitle: 'Restoran masası kalitesini şehirler arası standartla koruyoruz.',
   craftExtensionBtn: 'Web Sitesi Uzantısı',
-  craftPartnerBtn: 'Restoran Üyeliği Oluştur',
+  craftPartnerBtn: 'Restoran İş Ortağı Ol',
+  craftCourierBtn: 'Kurye Sipariş Kabulü',
   step1Badge: 'Adım 1/4 · Onaylandı',
   step1Title: 'Siparişiniz Alındı',
   step2Badge: 'Adım 2/4 · Mutfakta',
@@ -375,6 +378,7 @@ const tr: UITranslations = {
   footerStandardsLink: 'Teslimat Standardı',
   footerOrdersLink: 'Sipariş Takibi',
   footerExtensionLink: 'Web Sitesi Uzantısı',
+  footerCourierLink: 'Kurye İş Ortağı & Sipariş Kabulü',
   liveSupportBtn: 'Canlı Destek',
   liveSupportTitle: 'Sipariş Canlı Destek',
   liveSupportSubtitle: 'Restoran mutfağı veya teslimat kuryesi ile anlık yazışın',
@@ -462,6 +466,7 @@ const en: UITranslations = {
   craftTitle: 'Preserving dine-in kitchen quality across every city delivery.',
   craftExtensionBtn: 'Website Extension',
   craftPartnerBtn: 'Join as Partner Restaurant',
+  craftCourierBtn: 'Courier Order Dispatch',
   step1Badge: 'Step 1/4 · Confirmed',
   step1Title: 'Order Received',
   step2Badge: 'Step 2/4 · Cooking',
@@ -488,6 +493,7 @@ const en: UITranslations = {
   footerStandardsLink: 'Delivery Standards',
   footerOrdersLink: 'Order Tracking',
   footerExtensionLink: 'Website Extension',
+  footerCourierLink: 'Courier Partner & Dispatch',
   liveSupportBtn: 'Live Support',
   liveSupportTitle: 'Order Live Support',
   liveSupportSubtitle: 'Message the restaurant kitchen or delivery courier in real time',

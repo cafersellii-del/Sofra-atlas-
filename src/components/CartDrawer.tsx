@@ -372,15 +372,6 @@ export function CartDrawer({
     method: PaymentMethod,
     receipt?: PaymentReceipt
   ) => {
-    const couriers = [
-      'Emre K.',
-      'Kenji T.',
-      'Marco R.',
-      'Camille D.',
-      'Niran P.',
-    ];
-    const randomCourier =
-      couriers[Math.floor(Math.random() * couriers.length)];
     const orderNumber = `SA-${Math.floor(4800 + Math.random() * 5100)}`;
 
     const prefs: string[] = [];
@@ -415,7 +406,9 @@ export function CartDrawer({
       totalTry,
       status: 'received',
       estimatedArrival: activeHub.avgDelivery,
-      courierName: randomCourier,
+      courierId: '',
+      courierStatus: 'waiting_courier',
+      courierName: 'Kurye Bekleniyor',
     };
 
     setFormError('');

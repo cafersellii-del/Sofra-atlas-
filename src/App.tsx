@@ -11,6 +11,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { CartDrawer } from './components/CartDrawer';
@@ -55,6 +56,7 @@ import type {
   CartItem,
   CityId,
   ContinentId,
+  CourierOrderStatus,
   CuisineCategory,
   CurrencyMode,
   Dish,
@@ -164,6 +166,9 @@ export default function App() {
     OrderStepNotification[]
   >([]);
   const [isRestaurantPortalOpen, setIsRestaurantPortalOpen] = useState(false);
+  const [partnerPortalRole, setPartnerPortalRole] = useState<
+    'restaurant' | 'courier'
+  >('restaurant');
   const [isExtensionStudioOpen, setIsExtensionStudioOpen] = useState(false);
   const [supportChatState, setSupportChatState] = useState<{
     orderId: string;
@@ -445,6 +450,8 @@ export default function App() {
             status: OrderStatus;
             estimatedArrival: string;
             courierName: string;
+            courierId?: string;
+            courierStatus?: CourierOrderStatus;
           };
           return {
             id: data.orderNumber,
@@ -490,6 +497,8 @@ export default function App() {
             status: data.status,
             estimatedArrival: data.estimatedArrival,
             courierName: data.courierName,
+            courierId: data.courierId ?? '',
+            courierStatus: data.courierStatus,
           };
         });
 
@@ -585,15 +594,26 @@ export default function App() {
     }
   }, [orders]);
 
-  // Automatic progression for active in-flight orders
+  // Automatic progression only for legacy demo orders (real courier-queue orders are driven by courier/partner actions)
   useEffect(() => {
-    const hasActive = orders.some((o) => o.status !== 'delivered');
-    if (!hasActive) return;
+    const hasAutoAdvancing = orders.some(
+      (o) =>
+        o.status !== 'delivered' &&
+        o.courierStatus !== 'waiting_courier' &&
+        !o.courierId
+    );
+    if (!hasAutoAdvancing) return;
 
     const timer = window.setInterval(() => {
       setOrders((prev) =>
         prev.map((order) => {
-          if (order.status === 'delivered') return order;
+          if (
+            order.status === 'delivered' ||
+            order.courierStatus === 'waiting_courier' ||
+            Boolean(order.courierId)
+          ) {
+            return order;
+          }
           return { ...order, status: getNextStatus(order.status) };
         })
       );
@@ -1079,26 +1099,70 @@ export default function App() {
     void registerOrderSupportMetadata(orderWithDocId);
 
     if (currentUser && currentUser.emailVerified) {
-      const restaurantName = sanitizeText(
+      const rawRestaurantName = sanitizeText(
         order.items[0]?.restaurantName ?? 'Sofra Atlas Mutfak',
         VALIDATION_BOUNDS.nameMax
       );
+      const restaurantName =
+        rawRestaurantName.length >= 2
+          ? rawRestaurantName
+          : 'Sofra Atlas Mutfak';
+      const rawCityName = sanitizeText(
+        order.cityName,
+        VALIDATION_BOUNDS.cityNameMax
+      );
+      const safeCityName = rawCityName.length >= 2 ? rawCityName : 'İstanbul';
+      const rawNeighborhood = sanitizeText(
+        order.neighborhood,
+        VALIDATION_BOUNDS.districtMax
+      );
+      const safeNeighborhood =
+        rawNeighborhood.length >= 2 ? rawNeighborhood : 'Merkez';
+      const safeOrderNumber =
+        sanitizeText(order.id, 32).length >= 4
+          ? sanitizeText(order.id, 32)
+          : `SA-${Date.now().toString().slice(-4)}`;
+      const safeEstimatedArrival =
+        sanitizeText(order.estimatedArrival, 40).length >= 2
+          ? sanitizeText(order.estimatedArrival, 40)
+          : '25–35 dk';
+      const safeDeliveryPrefs = (order.deliveryPreferences ?? [])
+        .filter(
+          (p) => p === 'Temassız teslimat' || p === 'Zili çalmayın'
+        )
+        .slice(0, 4);
+
       const itemsSummary = order.items
         .slice(0, 25)
         .map(
           (it) =>
             `${it.quantity}× ${it.dishName} (${it.portionLabel}) · ${Math.round(it.lineTotalTry)} ₺`
         );
+      const itemsCount = Math.max(
+        1,
+        Math.min(
+          100,
+          order.items.reduce((sum, it) => sum + it.quantity, 0) || 1
+        )
+      );
+      const safeTotalTry = Math.max(1, Math.min(500000, order.totalTry || 1));
+      const courierEarningsTry = Math.max(
+        0,
+        Math.min(
+          50000,
+          order.deliveryFeeTry > 0
+            ? Math.max(45, order.deliveryFeeTry)
+            : Math.max(55, Math.round(safeTotalTry * 0.12))
+        )
+      );
 
-      void setDoc(doc(db, 'orders', firestoreOrderId), {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'orders', firestoreOrderId), {
         ownerId: currentUser.uid,
-        orderNumber: sanitizeText(order.id, 32),
+        orderNumber: safeOrderNumber,
         cityId: order.cityId,
-        cityName: sanitizeText(order.cityName, VALIDATION_BOUNDS.cityNameMax),
-        neighborhood: sanitizeText(
-          order.neighborhood,
-          VALIDATION_BOUNDS.districtMax
-        ),
+        cityName: safeCityName,
+        neighborhood: safeNeighborhood,
         address: sanitizeText(order.address, VALIDATION_BOUNDS.addressMax),
         customerName: sanitizeText(order.customerName, VALIDATION_BOUNDS.nameMax),
         customerPhone: sanitizeText(
@@ -1120,24 +1184,111 @@ export default function App() {
         cardBrand: sanitizeText(order.paymentDetails?.cardBrand ?? '', 24),
         cardLast4: sanitizeText(order.paymentDetails?.last4 ?? '', 4),
         refundId: '',
-        deliveryPreferences: (order.deliveryPreferences ?? []).slice(0, 4),
+        deliveryPreferences: safeDeliveryPrefs,
         itemsSummary,
         subtotalTry: order.subtotalTry,
         discountTry: order.discountTry,
         deliveryFeeTry: order.deliveryFeeTry,
-        totalTry: order.totalTry,
+        totalTry: safeTotalTry,
         status: order.status,
-        estimatedArrival: sanitizeText(order.estimatedArrival, 40),
-        courierName: sanitizeText(order.courierName, 60),
+        estimatedArrival: safeEstimatedArrival,
+        courierId: '',
+        courierStatus: 'waiting_courier',
+        courierName: sanitizeText(order.courierName || 'Kurye Bekleniyor', 60),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      }).catch((error) => {
+      });
+
+      batch.set(doc(db, 'dispatchJobs', firestoreOrderId), {
+        orderId: firestoreOrderId,
+        orderNumber: safeOrderNumber,
+        ownerId: currentUser.uid,
+        cityId: order.cityId,
+        cityName: safeCityName,
+        neighborhood: safeNeighborhood,
+        restaurantName,
+        itemsCount,
+        totalTry: safeTotalTry,
+        courierEarningsTry,
+        estimatedArrival: safeEstimatedArrival,
+        paymentMethod: order.paymentMethod,
+        deliveryPreferences: safeDeliveryPrefs,
+        courierId: '',
+        courierName: '',
+        status: 'open',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      void batch.commit().catch((error) => {
         handleFirestoreError(
           error,
-          OperationType.CREATE,
+          OperationType.WRITE,
           `orders/${firestoreOrderId}`
         );
       });
+    }
+  };
+
+  const handleCourierAcceptOrder = (
+    orderId: string,
+    courierId: string,
+    courierName: string
+  ) => {
+    let updatedOrder: Order | null = null;
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (order.id !== orderId) return order;
+        const nextStatus: OrderStatus =
+          order.status === 'received' ? 'preparing' : order.status;
+        updatedOrder = {
+          ...order,
+          courierId,
+          courierName,
+          courierStatus: 'accepted',
+          status: nextStatus,
+        };
+        return updatedOrder;
+      })
+    );
+    if (updatedOrder) {
+      void registerOrderSupportMetadata(updatedOrder);
+    }
+  };
+
+  const handleCourierPickupOrder = (orderId: string) => {
+    let updatedOrder: Order | null = null;
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (order.id !== orderId) return order;
+        updatedOrder = {
+          ...order,
+          courierStatus: 'picked_up',
+          status: 'on_the_way',
+        };
+        return updatedOrder;
+      })
+    );
+    if (updatedOrder) {
+      void registerOrderSupportMetadata(updatedOrder);
+    }
+  };
+
+  const handleCourierDeliverOrder = (orderId: string) => {
+    let updatedOrder: Order | null = null;
+    setOrders((prev) =>
+      prev.map((order) => {
+        if (order.id !== orderId) return order;
+        updatedOrder = {
+          ...order,
+          courierStatus: 'delivered',
+          status: 'delivered',
+        };
+        return updatedOrder;
+      })
+    );
+    if (updatedOrder) {
+      void registerOrderSupportMetadata(updatedOrder);
     }
   };
 
@@ -1267,7 +1418,10 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
         onOpenOrders={() => setIsOrdersOpen(true)}
         onOpenMemberModal={() => setIsMemberModalOpen(true)}
-        onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
+        onOpenRestaurantPortal={() => {
+          setPartnerPortalRole('restaurant');
+          setIsRestaurantPortalOpen(true);
+        }}
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
       />
 
@@ -1320,7 +1474,10 @@ export default function App() {
           onSelectDish={setActiveDish}
           onQuickAdd={handleQuickAdd}
           onResetFilters={handleResetFilters}
-          onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
+          onOpenRestaurantPortal={() => {
+            setPartnerPortalRole('restaurant');
+            setIsRestaurantPortalOpen(true);
+          }}
         />
 
         {!initialUrlParams.embed && (
@@ -1340,7 +1497,14 @@ export default function App() {
 
         {!initialUrlParams.embed && (
           <CraftsmanshipSection
-            onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
+            onOpenRestaurantPortal={() => {
+              setPartnerPortalRole('restaurant');
+              setIsRestaurantPortalOpen(true);
+            }}
+            onOpenCourierPortal={() => {
+              setPartnerPortalRole('courier');
+              setIsRestaurantPortalOpen(true);
+            }}
             onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
             registeredCount={activeRestaurants.length}
           />
@@ -1353,7 +1517,14 @@ export default function App() {
           onSelectCity={handleSelectCity}
           onOpenOrders={() => setIsOrdersOpen(true)}
           onOpenMemberModal={() => setIsMemberModalOpen(true)}
-          onOpenRestaurantPortal={() => setIsRestaurantPortalOpen(true)}
+          onOpenRestaurantPortal={() => {
+            setPartnerPortalRole('restaurant');
+            setIsRestaurantPortalOpen(true);
+          }}
+          onOpenCourierPortal={() => {
+            setPartnerPortalRole('courier');
+            setIsRestaurantPortalOpen(true);
+          }}
           onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
           onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
         />
@@ -1514,8 +1685,16 @@ export default function App() {
       <RestaurantPortalModal
         isOpen={isRestaurantPortalOpen}
         orders={orders}
+        initialRole={partnerPortalRole}
         onClose={() => setIsRestaurantPortalOpen(false)}
         onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
+        onAdvanceOrderStatus={handleAdvanceOrderStatus}
+        onAcceptOrderCourier={handleCourierAcceptOrder}
+        onPickupOrderCourier={handleCourierPickupOrder}
+        onDeliverOrderCourier={handleCourierDeliverOrder}
+        onOpenCourierChat={(order) =>
+          setSupportChatState({ orderId: order.id, channel: 'courier' })
+        }
       />
 
       <LiveSupportChatModal

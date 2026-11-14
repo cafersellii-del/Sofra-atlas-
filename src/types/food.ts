@@ -215,10 +215,67 @@ export interface MemberProfile {
   updatedAt?: unknown;
 }
 
+export type CourierVehicleType = 'motorcycle' | 'bicycle' | 'ebike' | 'car';
+
+export type CourierAvailability = 'online' | 'busy' | 'offline';
+
+export type CourierOrderStatus =
+  | 'waiting_courier'
+  | 'accepted'
+  | 'picked_up'
+  | 'delivered';
+
+export interface CourierProfile {
+  id: string;
+  ownerId: string;
+  fullName: string;
+  cityId: Exclude<CityId, 'all'>;
+  cityName: string;
+  district: string;
+  vehicleType: CourierVehicleType;
+  plateOrBagCode: string;
+  availability: CourierAvailability;
+  completedDeliveries: number;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface CourierPrivateContact {
+  ownerId: string;
+  contactEmail: string;
+  contactPhone: string;
+  licenseOrTaxId: string;
+  updatedAt?: unknown;
+}
+
+export interface DispatchJobRecord {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  ownerId: string;
+  cityId: Exclude<CityId, 'all'>;
+  cityName: string;
+  neighborhood: string;
+  restaurantName: string;
+  itemsCount: number;
+  totalTry: number;
+  courierEarningsTry: number;
+  estimatedArrival: string;
+  paymentMethod: PaymentMethod;
+  deliveryPreferences: string[];
+  courierId: string;
+  courierName: string;
+  status: 'open' | 'accepted' | 'picked_up' | 'delivered';
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
 export interface Order {
   id: string;
   firestoreId?: string;
   ownerId?: string;
+  courierId?: string;
+  courierStatus?: CourierOrderStatus;
   createdAt: string;
   cityId: Exclude<CityId, 'all'>;
   cityName: string;

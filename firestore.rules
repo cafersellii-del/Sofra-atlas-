@@ -37,6 +37,11 @@ service cloud.firestore {
       );
     }
 
+    function isRegisteredCourier() {
+      return isVerifiedUser() &&
+        exists(/databases/$(database)/documents/couriers/$(request.auth.uid));
+    }
+
     function isValidCityId(cityId) {
       return cityId is string
         && cityId.size() >= 2
@@ -158,10 +163,14 @@ service cloud.firestore {
           'authCode', 'cardBrand', 'cardLast4', 'refundId',
           'deliveryPreferences', 'itemsSummary', 'subtotalTry', 'discountTry',
           'deliveryFeeTry', 'totalTry', 'status', 'estimatedArrival',
-          'courierName', 'createdAt', 'updatedAt'
+          'courierName', 'courierId', 'courierStatus', 'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
-        && (data.ownerId == request.auth.uid || isAdmin())
+        && (
+          data.ownerId == request.auth.uid ||
+          (('courierId' in data) && data.courierId == request.auth.uid) ||
+          isAdmin()
+        )
         && data.orderNumber is string && data.orderNumber.size() >= 4 && data.orderNumber.size() <= 32
         && isValidCityId(data.cityId)
         && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
@@ -191,6 +200,8 @@ service cloud.firestore {
         && data.status in ['received', 'preparing', 'on_the_way', 'delivered']
         && data.estimatedArrival is string && data.estimatedArrival.size() >= 2 && data.estimatedArrival.size() <= 40
         && data.courierName is string && data.courierName.size() >= 2 && data.courierName.size() <= 60
+        && (!('courierId' in data) || (data.courierId is string && data.courierId.size() <= 128 && (data.courierId == '' || isValidId(data.courierId))))
+        && (!('courierStatus' in data) || data.courierStatus in ['waiting_courier', 'accepted', 'picked_up', 'delivered'])
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -233,6 +244,82 @@ service cloud.firestore {
         && data.defaultProvince is string && data.defaultProvince.size() >= 2 && data.defaultProvince.size() <= 60
         && data.defaultDistrict is string && data.defaultDistrict.size() >= 2 && data.defaultDistrict.size() <= 60
         && data.defaultAddress is string && data.defaultAddress.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourierProfile(data) {
+      return data.keys().hasAll([
+          'ownerId', 'fullName', 'cityId', 'cityName', 'district',
+          'vehicleType', 'plateOrBagCode', 'availability', 'completedDeliveries',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'fullName', 'cityId', 'cityName', 'district',
+          'vehicleType', 'plateOrBagCode', 'availability', 'completedDeliveries',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && isValidId(data.ownerId)
+        && (data.ownerId == request.auth.uid || isAdmin())
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80
+        && isValidCityId(data.cityId)
+        && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
+        && data.district is string && data.district.size() >= 2 && data.district.size() <= 60
+        && data.vehicleType in ['motorcycle', 'bicycle', 'ebike', 'car']
+        && data.plateOrBagCode is string && data.plateOrBagCode.size() >= 2 && data.plateOrBagCode.size() <= 30
+        && data.availability in ['online', 'busy', 'offline']
+        && data.completedDeliveries is number && data.completedDeliveries >= 0 && data.completedDeliveries <= 100000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCourierPrivateContact(data) {
+      return data.keys().hasAll([
+          'ownerId', 'contactEmail', 'contactPhone', 'licenseOrTaxId', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'contactEmail', 'contactPhone', 'licenseOrTaxId', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId == request.auth.uid && isValidId(data.ownerId)
+        && data.contactEmail is string && data.contactEmail.size() >= 5 && data.contactEmail.size() <= 120
+        && data.contactPhone is string && data.contactPhone.size() >= 6 && data.contactPhone.size() <= 30
+        && data.licenseOrTaxId is string && data.licenseOrTaxId.size() >= 4 && data.licenseOrTaxId.size() <= 30
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDispatchJob(data) {
+      return data.keys().hasAll([
+          'orderId', 'orderNumber', 'ownerId', 'cityId', 'cityName',
+          'neighborhood', 'restaurantName', 'itemsCount', 'totalTry',
+          'courierEarningsTry', 'estimatedArrival', 'paymentMethod',
+          'deliveryPreferences', 'courierId', 'courierName', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'orderId', 'orderNumber', 'ownerId', 'cityId', 'cityName',
+          'neighborhood', 'restaurantName', 'itemsCount', 'totalTry',
+          'courierEarningsTry', 'estimatedArrival', 'paymentMethod',
+          'deliveryPreferences', 'courierId', 'courierName', 'status',
+          'createdAt', 'updatedAt'
+        ])
+        && data.orderId is string && isValidId(data.orderId)
+        && data.orderNumber is string && data.orderNumber.size() >= 4 && data.orderNumber.size() <= 32
+        && data.ownerId is string && isValidId(data.ownerId)
+        && isValidCityId(data.cityId)
+        && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
+        && data.neighborhood is string && data.neighborhood.size() >= 2 && data.neighborhood.size() <= 60
+        && data.restaurantName is string && data.restaurantName.size() >= 2 && data.restaurantName.size() <= 80
+        && data.itemsCount is number && data.itemsCount >= 1 && data.itemsCount <= 100
+        && data.totalTry is number && data.totalTry >= 1 && data.totalTry <= 500000
+        && data.courierEarningsTry is number && data.courierEarningsTry >= 0 && data.courierEarningsTry <= 50000
+        && data.estimatedArrival is string && data.estimatedArrival.size() >= 2 && data.estimatedArrival.size() <= 40
+        && data.paymentMethod in ['card', 'digital_wallet', 'cash_on_delivery']
+        && data.deliveryPreferences is list
+        && data.deliveryPreferences.size() <= 4
+        && data.deliveryPreferences.hasOnly(['Temassız teslimat', 'Zili çalmayın'])
+        && data.courierId is string && data.courierId.size() <= 128 && (data.courierId == '' || isValidId(data.courierId))
+        && data.courierName is string && data.courierName.size() <= 60
+        && data.status in ['open', 'accepted', 'picked_up', 'delivered']
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -393,16 +480,23 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow get: if isVerifiedUser() && isValidId(orderId) && (
-        existing().ownerId == request.auth.uid || isAdmin()
+        existing().ownerId == request.auth.uid ||
+        existing().courierId == request.auth.uid ||
+        (existing().courierStatus == 'waiting_courier' && isRegisteredCourier()) ||
+        isAdmin()
       );
       allow list: if isVerifiedUser() && (
-        resource.data.ownerId == request.auth.uid || isBootstrappedAdmin()
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.courierId == request.auth.uid ||
+        isBootstrappedAdmin()
       );
 
       allow create: if isVerifiedUser()
         && isValidId(orderId)
         && isValidCustomerOrder(incoming())
         && incoming().ownerId == request.auth.uid
+        && (!('courierId' in incoming()) || incoming().courierId == '')
+        && (!('courierStatus' in incoming()) || incoming().courierStatus == 'waiting_courier')
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -417,17 +511,184 @@ service cloud.firestore {
           (
             isAdmin() &&
             incoming().diff(existing()).affectedKeys().hasOnly([
-              'status', 'paymentStatus', 'refundId', 'updatedAt'
+              'status', 'paymentStatus', 'refundId', 'courierId',
+              'courierName', 'courierStatus', 'updatedAt'
             ])
           ) ||
           (
             existing().ownerId == request.auth.uid &&
             existing().status != 'delivered' &&
             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          (
+            existing().status != 'delivered' &&
+            isRegisteredCourier() &&
+            (
+              (
+                (!('courierId' in existing()) || existing().courierId == '') &&
+                incoming().courierId == request.auth.uid &&
+                incoming().courierStatus == 'accepted' &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'courierId', 'courierName', 'courierStatus', 'status', 'updatedAt'
+                ])
+              ) ||
+              (
+                existing().courierId == request.auth.uid &&
+                incoming().courierId == request.auth.uid &&
+                incoming().courierStatus in ['picked_up', 'delivered'] &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'courierStatus', 'status', 'updatedAt'
+                ])
+              )
+            )
           )
         );
 
       allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    match /couriers/{courierId} {
+      allow get: if isVerifiedUser() && isValidId(courierId) && (
+        courierId == request.auth.uid || isAdmin()
+      );
+      allow list: if isBootstrappedAdmin() || (
+        isVerifiedUser() && resource.data.ownerId == request.auth.uid
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(courierId)
+        && courierId == request.auth.uid
+        && isValidCourierProfile(incoming())
+        && incoming().completedDeliveries == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(courierId)
+        && isValidCourierProfile(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName', 'cityId', 'cityName', 'district', 'vehicleType',
+            'plateOrBagCode', 'availability', 'completedDeliveries', 'updatedAt'
+          ])) ||
+          (
+            courierId == request.auth.uid &&
+            existing().ownerId == request.auth.uid &&
+            (
+              incoming().diff(existing()).affectedKeys().hasOnly(['availability', 'updatedAt']) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'availability', 'completedDeliveries', 'updatedAt'
+              ]) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'fullName', 'cityId', 'cityName', 'district', 'vehicleType',
+                'plateOrBagCode', 'availability', 'updatedAt'
+              ])
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(courierId);
+
+      match /private/{docId} {
+        allow get: if isVerifiedUser()
+          && isValidId(courierId)
+          && isValidId(docId)
+          && docId == 'contact'
+          && (
+            (request.auth.uid == courierId && (resource == null || existing().ownerId == request.auth.uid)) ||
+            isAdmin()
+          );
+        allow list: if false;
+
+        allow create: if isVerifiedUser()
+          && isValidId(courierId)
+          && isValidId(docId)
+          && docId == 'contact'
+          && request.auth.uid == courierId
+          && existsAfter(/databases/$(database)/documents/couriers/$(courierId))
+          && isValidCourierPrivateContact(incoming())
+          && incoming().updatedAt == request.time;
+
+        allow update: if isVerifiedUser()
+          && isValidId(courierId)
+          && isValidId(docId)
+          && docId == 'contact'
+          && request.auth.uid == courierId
+          && existing().ownerId == request.auth.uid
+          && isValidCourierPrivateContact(incoming())
+          && incoming().ownerId == existing().ownerId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'contactEmail', 'contactPhone', 'licenseOrTaxId', 'updatedAt'
+          ]);
+
+        allow delete: if isAdmin() && isValidId(courierId) && isValidId(docId);
+      }
+    }
+
+    match /dispatchJobs/{jobId} {
+      allow get: if isVerifiedUser() && isValidId(jobId) && (
+        existing().ownerId == request.auth.uid ||
+        existing().courierId == request.auth.uid ||
+        (existing().status == 'open' && isRegisteredCourier()) ||
+        isAdmin()
+      );
+      allow list: if isVerifiedUser() && (
+        resource.data.status == 'open' ||
+        resource.data.courierId == request.auth.uid ||
+        resource.data.ownerId == request.auth.uid ||
+        isBootstrappedAdmin()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(jobId)
+        && isValidDispatchJob(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().courierId == ''
+        && incoming().status == 'open'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/orders/$(incoming().orderId));
+
+      allow update: if isVerifiedUser()
+        && isValidId(jobId)
+        && isValidDispatchJob(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().orderId == existing().orderId
+        && incoming().orderNumber == existing().orderNumber
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && existing().status != 'delivered'
+        && (
+          isAdmin() ||
+          (
+            isRegisteredCourier() &&
+            (
+              (
+                existing().status == 'open' &&
+                existing().courierId == '' &&
+                incoming().courierId == request.auth.uid &&
+                incoming().status == 'accepted' &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'courierId', 'courierName', 'status', 'updatedAt'
+                ])
+              ) ||
+              (
+                existing().courierId == request.auth.uid &&
+                incoming().courierId == request.auth.uid &&
+                incoming().status in ['picked_up', 'delivered'] &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'status', 'updatedAt'
+                ])
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin() && isValidId(jobId);
     }
 
     match /users/{userId} {
