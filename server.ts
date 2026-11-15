@@ -422,8 +422,29 @@ loadSupportThreadsFromDisk();
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   const httpServer = http.createServer(app);
   app.use(express.json({ limit: '256kb' }));
+
+  const canonicalCustomDomain = (process.env.CUSTOM_DOMAIN || 'atlassofra.com.tr')
+    .trim()
+    .toLowerCase();
+  if (isProduction && canonicalCustomDomain) {
+    app.use((req, res, next) => {
+      const forwardedHost = String(
+        req.headers['x-forwarded-host'] ?? req.headers.host ?? ''
+      )
+        .split(',')[0]
+        ?.trim()
+        .toLowerCase()
+        .replace(/:\d+$/, '');
+      if (forwardedHost === `www.${canonicalCustomDomain}`) {
+        res.redirect(301, `https://${canonicalCustomDomain}${req.originalUrl || '/'}`);
+        return;
+      }
+      next();
+    });
+  }
 
   const supportWss = new WebSocketServer({ noServer: true });
   const wsAliveMap = new WeakMap<WebSocket, boolean>();

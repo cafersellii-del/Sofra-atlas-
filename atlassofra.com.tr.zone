@@ -1,0 +1,34 @@
+; RFC 1035 / BIND DNS Zone File — atlassofra.com.tr
+; Not: Bu dosya Cloudflare, Google Cloud DNS, cPanel veya kayıt firmanızın
+; "DNS Dosyası Yükle / Import Zone File" bölümünden içe aktarmak içindir.
+;
+; ÖNEMLİ:
+; 1) Google Cloud Run veya Firebase Hosting panelinden alacağınız benzersiz
+;    TXT doğrulama kaydını aşağıdaki "DOGRULAMA_KODU_BURAYA" yerine yazın.
+; 2) DNSSEC "Key tag" alanına ASLA rastgele değer girmeyin. DNSSEC açacaksanız
+;    yalnızca yetkili DNS sağlayıcınızın (Cloudflare / Cloud DNS) ürettiği
+;    Key Tag, Algorithm, Digest Type ve Digest değerlerini TRABİS / kayıt
+;    firmanıza girin; aksi halde alan adınız çözümlenmez.
+
+$ORIGIN atlassofra.com.tr.
+$TTL 3600
+
+; Kök Alan Adı (Google Cloud Run Anycast IPv4 A Kayıtları)
+; (Alternatif olarak Firebase Hosting kullanıyorsanız Firebase panelinin verdiği A IP'lerini girin)
+@   IN  A       216.239.32.21
+@   IN  A       216.239.34.21
+@   IN  A       216.239.36.21
+@   IN  A       216.239.38.21
+
+; Kök Alan Adı (Google Cloud Run Anycast IPv6 AAAA Kayıtları)
+@   IN  AAAA    2001:4860:4802:32::15
+@   IN  AAAA    2001:4860:4802:34::15
+@   IN  AAAA    2001:4860:4802:36::15
+@   IN  AAAA    2001:4860:4802:38::15
+
+; Alt Alan Adı (www -> Google Managed SSL & Hosting CNAME)
+www IN  CNAME   ghs.googlehosted.com.
+
+; Google Search Console / Cloud Run / Firebase Alan Adı Sahiplik Doğrulaması
+; Aşağıdaki satırın başındaki ";" işaretini kaldırıp Google'ın verdiği gerçek token ile değiştirin:
+; @   IN  TXT     "google-site-verification=DOGRULAMA_KODU_BURAYA"
