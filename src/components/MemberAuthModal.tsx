@@ -464,7 +464,7 @@ export function MemberAuthModal({
 
                   <label className="block space-y-1">
                     <span className="text-xs font-medium text-[#141413]">
-                      İl / Şehir
+                      Bölge / İl / Şehir
                     </span>
                     <select
                       value={province}
@@ -481,7 +481,7 @@ export function MemberAuthModal({
 
                   <label className="block space-y-1">
                     <span className="text-xs font-medium text-[#141413]">
-                      İlçe / Bölge
+                      İlçe / Semt / Mahalle
                     </span>
                     <select
                       value={district}

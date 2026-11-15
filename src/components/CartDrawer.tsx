@@ -1214,7 +1214,7 @@ export function CartDrawer({
                       htmlFor="checkout-province"
                       className="block text-xs font-medium text-[#575550] mb-1.5"
                     >
-                      İl / Şehir
+                      Bölge / İl / Şehir
                     </label>
                     <select
                       id="checkout-province"
@@ -1243,7 +1243,7 @@ export function CartDrawer({
                       htmlFor="checkout-district"
                       className="block text-xs font-medium text-[#575550] mb-1.5"
                     >
-                      İlçe / Semt
+                      İlçe / Semt / Mahalle
                     </label>
                     <select
                       id="checkout-district"

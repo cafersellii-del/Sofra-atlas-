@@ -743,7 +743,7 @@ function WorldMapInteractive({
                         setOpenHubInfoId(null);
                         setOpenPlaceId(null);
                       }}
-                      title={`${prov.name} — ${prov.districts.length} ilçe`}
+                      title={`${prov.name} — ${prov.districts.length} ilçe / semt / mahalle`}
                       zIndex={isProvSelected ? 35 : 18}
                     >
                       <Pin
@@ -855,7 +855,7 @@ function WorldMapInteractive({
             </div>
             <p className="text-xs text-[#575550] mt-1">
               {selectedDistrict !== 'all'
-                ? `Seçili İlçe / Semt: ${selectedDistrict}`
+                ? `Seçili İlçe / Semt / Mahalle: ${selectedDistrict}`
                 : selectedProvince !== 'all'
                   ? getDistrictsForProvince(focusedCityId, selectedProvince)
                       .slice(0, 4)

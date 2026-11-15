@@ -4,12 +4,17 @@ export interface ProvinceLocation {
   districts: string[];
 }
 
-// Türkiye'nin 81 İli ve tüm resmi ilçeleri
+// Türkiye'nin 81 İli, tüm resmi ilçeleri ve öne çıkan semt & mahalleleri
 export const TURKEY_PROVINCES: ProvinceLocation[] = [
   {
     name: 'İstanbul',
     center: { lat: 41.0082, lng: 28.9784 },
     districts: [
+      'Karaköy', 'Nişantaşı', 'Moda / Kadıköy', 'Bebek', 'Cihangir',
+      'Etiler', 'Levent', 'Suadiye', 'Bağdat Caddesi', 'Taksim', 'Galata',
+      'Ortaköy', 'Bomonti', 'Fenerbahçe', 'Caddebostan', 'Acıbadem',
+      'Koşuyolu', 'Kuzguncuk', 'Çengelköy', 'Maslak', 'Göktürk', 'Ataköy',
+      'Florya', 'Yeşilköy', 'Balat', 'Sultanahmet', 'Emirgan', 'İstinye',
       'Adalar', 'Arnavutköy', 'Ataşehir', 'Avcılar', 'Bağcılar', 'Bahçelievler',
       'Bakırköy', 'Başakşehir', 'Bayrampaşa', 'Beşiktaş', 'Beykoz', 'Beylikdüzü',
       'Beyoğlu', 'Büyükçekmece', 'Çatalca', 'Çekmeköy', 'Esenler', 'Esenyurt',
@@ -23,30 +28,36 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Ankara',
     center: { lat: 39.9334, lng: 32.8597 },
     districts: [
-      'Akyurt', 'Altındağ', 'Ayaş', 'Bala', 'Beypazarı', 'Çamlıdere', 'Çankaya',
-      'Çubuk', 'Elmadağ', 'Etimesgut', 'Evren', 'Gölbaşı', 'Güdül', 'Haymana',
-      'Kahramankazan', 'Kalecik', 'Keçiören', 'Kızılcahamam', 'Mamak', 'Nallıhan',
-      'Polatlı', 'Pursaklar', 'Sincan', 'Şereflikoçhisar', 'Yenimahalle',
+      'Kızılay', 'Tunalı Hilmi', 'Çayyolu', 'Ümitköy', 'Bahçelievler Mah.',
+      'Balgat', 'Söğütözü', 'Kavaklıdere', 'Gaziosmanpaşa (GOP)', 'Ayrancı',
+      'Batıkent', 'Eryaman', 'Oran', 'Ulus', 'Akyurt', 'Altındağ', 'Ayaş',
+      'Bala', 'Beypazarı', 'Çamlıdere', 'Çankaya', 'Çubuk', 'Elmadağ',
+      'Etimesgut', 'Evren', 'Gölbaşı', 'Güdül', 'Haymana', 'Kahramankazan',
+      'Kalecik', 'Keçiören', 'Kızılcahamam', 'Mamak', 'Nallıhan', 'Polatlı',
+      'Pursaklar', 'Sincan', 'Şereflikoçhisar', 'Yenimahalle',
     ],
   },
   {
     name: 'İzmir',
     center: { lat: 38.4237, lng: 27.1428 },
     districts: [
-      'Aliağa', 'Balçova', 'Bayındır', 'Bayraklı', 'Bergama', 'Beydağ', 'Bornova',
-      'Buca', 'Çeşme', 'Çiğli', 'Dikili', 'Foça', 'Gaziemir', 'Güzelbahçe',
-      'Karabağlar', 'Karaburun', 'Karşıyaka', 'Kemalpaşa', 'Kınık', 'Kiraz',
-      'Konak', 'Menderes', 'Menemen', 'Narlıdere', 'Ödemiş', 'Seferihisar',
-      'Selçuk', 'Tire', 'Torbalı', 'Urla',
+      'Alsancak', 'Kordon', 'Bostanlı', 'Mavişehir', 'Göztepe', 'Güzelyalı',
+      'Kemeraltı', 'Alaçatı', 'Ilıca', 'Küçükpark', 'Aliağa', 'Balçova',
+      'Bayındır', 'Bayraklı', 'Bergama', 'Beydağ', 'Bornova', 'Buca', 'Çeşme',
+      'Çiğli', 'Dikili', 'Foça', 'Gaziemir', 'Güzelbahçe', 'Karabağlar',
+      'Karaburun', 'Karşıyaka', 'Kemalpaşa', 'Kınık', 'Kiraz', 'Konak',
+      'Menderes', 'Menemen', 'Narlıdere', 'Ödemiş', 'Seferihisar', 'Selçuk',
+      'Tire', 'Torbalı', 'Urla',
     ],
   },
   {
     name: 'Adana',
     center: { lat: 37.0, lng: 35.3213 },
     districts: [
-      'Aladağ', 'Ceyhan', 'Çukurova', 'Feke', 'İmamoğlu', 'Karaisalı', 'Karataş',
-      'Kozan', 'Pozantı', 'Saimbeyli', 'Sarıçam', 'Seyhan', 'Tufanbeyli',
-      'Yumurtalık', 'Yüreğir',
+      'Ziyapaşa', 'Barajyolu', 'Turgut Özal', 'Gazipaşa', 'Güzelyalı Mah.',
+      'Aladağ', 'Ceyhan', 'Çukurova', 'Feke', 'İmamoğlu', 'Karaisalı',
+      'Karataş', 'Kozan', 'Pozantı', 'Saimbeyli', 'Sarıçam', 'Seyhan',
+      'Tufanbeyli', 'Yumurtalık', 'Yüreğir',
     ],
   },
   {
@@ -94,6 +105,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Antalya',
     center: { lat: 36.8969, lng: 30.7133 },
     districts: [
+      'Kaleiçi', 'Lara', 'Konyaaltı Liman', 'Işıklar', 'Belek', 'Side',
       'Akseki', 'Aksu', 'Alanya', 'Demre', 'Döşemealtı', 'Elmalı', 'Finike',
       'Gazipaşa', 'Gündoğmuş', 'İbradı', 'Kaş', 'Kemer', 'Kepez', 'Konyaaltı',
       'Korkuteli', 'Kumluca', 'Manavgat', 'Muratpaşa', 'Serik',
@@ -189,6 +201,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Bursa',
     center: { lat: 40.1885, lng: 29.061 },
     districts: [
+      'Özlüce', 'Bademli', 'Görükle', 'FSM Bulvarı', 'Çekirge', 'Heykel',
       'Büyükorhan', 'Gemlik', 'Gürsu', 'Harmancık', 'İnegöl', 'İznik',
       'Karacabey', 'Keles', 'Kestel', 'Mudanya', 'Mustafakemalpaşa', 'Nilüfer',
       'Orhaneli', 'Orhangazi', 'Osmangazi', 'Yenişehir', 'Yıldırım',
@@ -283,6 +296,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Eskişehir',
     center: { lat: 39.7767, lng: 30.5206 },
     districts: [
+      'Bağlar Mah.', 'Adalar / Porsuk', 'Vişnelik', 'Batıkent Mah.',
       'Alpu', 'Beylikova', 'Çifteler', 'Günyüzü', 'Han', 'İnönü', 'Mahmudiye',
       'Mihalgazi', 'Mihalıççık', 'Odunpazarı', 'Sarıcakaya', 'Seyitgazi',
       'Sivrihisar', 'Tepebaşı',
@@ -292,6 +306,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Gaziantep',
     center: { lat: 37.0662, lng: 37.3833 },
     districts: [
+      'İbrahimli', 'Batıkent Mah.', 'Gazimuhtarpaşa', 'Kalealtı', 'Karataş',
       'Araban', 'İslahiye', 'Karkamış', 'Nizip', 'Nurdağı', 'Oğuzeli',
       'Şahinbey', 'Şehitkamil', 'Yavuzeli',
     ],
@@ -471,6 +486,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Mersin',
     center: { lat: 36.8, lng: 34.6333 },
     districts: [
+      'Pozcu', 'Kushimoto Sokağı', 'Mezitli Sahil', 'Viranşehir',
       'Akdeniz', 'Anamur', 'Aydıncık', 'Bozyazı', 'Çamlıyayla', 'Erdemli',
       'Gülnar', 'Mezitli', 'Mut', 'Silifke', 'Tarsus', 'Toroslar', 'Yenişehir',
     ],
@@ -479,6 +495,7 @@ export const TURKEY_PROVINCES: ProvinceLocation[] = [
     name: 'Muğla',
     center: { lat: 37.2153, lng: 28.3636 },
     districts: [
+      'Yalıkavak', 'Türkbükü', 'Gümbet', 'Turgutreis', 'Göcek', 'Ölüdeniz', 'Akyaka',
       'Bodrum', 'Dalaman', 'Datça', 'Fethiye', 'Kavaklıdere', 'Köyceğiz',
       'Marmaris', 'Menteşe', 'Milas', 'Ortaca', 'Seydikemer', 'Ula', 'Yatağan',
     ],

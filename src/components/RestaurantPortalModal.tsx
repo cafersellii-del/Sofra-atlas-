@@ -735,7 +735,7 @@ export function RestaurantPortalModal({
                   className="font-display text-2xl font-semibold text-[#141413] leading-snug"
                   style={{ textWrap: 'balance' }}
                 >
-                  Restoranınızı 6 kıtada 196 ülkeden binlerce gurme kullanıcıyla buluşturun.
+                  Restoranınızı 6 kıtada 197 ülkeden binlerce gurme kullanıcıyla buluşturun.
                 </h3>
                 <p className="text-sm text-[#575550] leading-relaxed">
                   Google hesabınızla saniyeler içinde restoran üyeliği oluşturun,
@@ -883,7 +883,7 @@ export function RestaurantPortalModal({
 
                   <div>
                     <label className="block text-xs font-medium text-[#575550] mb-1.5">
-                      İl / Şehir
+                      Bölge / İl / Şehir
                     </label>
                     <select
                       value={regProvince}
@@ -908,7 +908,7 @@ export function RestaurantPortalModal({
 
                   <div>
                     <label className="block text-xs font-medium text-[#575550] mb-1.5">
-                      İlçe / Semt
+                      İlçe / Semt / Mahalle
                     </label>
                     <select
                       value={regDistrict}
@@ -1750,7 +1750,7 @@ export function RestaurantPortalModal({
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-[#575550] mb-1">
-                          İl / Şehir
+                          Bölge / İl / Şehir
                         </label>
                         <select
                           value={regProvince}
@@ -1774,7 +1774,7 @@ export function RestaurantPortalModal({
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-[#575550] mb-1">
-                          İlçe / Semt
+                          İlçe / Semt / Mahalle
                         </label>
                         <select
                           value={regDistrict}

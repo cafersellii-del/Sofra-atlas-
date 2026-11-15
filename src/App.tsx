@@ -821,13 +821,14 @@ export default function App() {
       ) {
         return false;
       }
-      if (
-        selectedCity !== 'all' &&
-        selectedDistrict !== 'all' &&
-        rest.district.toLocaleLowerCase('tr') !==
-          selectedDistrict.toLocaleLowerCase('tr')
-      ) {
-        return false;
+      if (selectedCity !== 'all' && selectedDistrict !== 'all') {
+        const rd = rest.district.toLocaleLowerCase('tr');
+        const sd = selectedDistrict.toLocaleLowerCase('tr');
+        const matches =
+          rd === sd ||
+          rd.split('/').some((part) => part.trim() === sd) ||
+          sd.split('/').some((part) => part.trim() === rd);
+        if (!matches) return false;
       }
       if (
         selectedCity === 'all' &&
@@ -920,13 +921,14 @@ export default function App() {
       ) {
         return false;
       }
-      if (
-        selectedCity !== 'all' &&
-        selectedDistrict !== 'all' &&
-        dish.district.toLocaleLowerCase('tr') !==
-          selectedDistrict.toLocaleLowerCase('tr')
-      ) {
-        return false;
+      if (selectedCity !== 'all' && selectedDistrict !== 'all') {
+        const dd = dish.district.toLocaleLowerCase('tr');
+        const sd = selectedDistrict.toLocaleLowerCase('tr');
+        const matches =
+          dd === sd ||
+          dd.split('/').some((part) => part.trim() === sd) ||
+          sd.split('/').some((part) => part.trim() === dd);
+        if (!matches) return false;
       }
       if (
         selectedCity === 'all' &&
