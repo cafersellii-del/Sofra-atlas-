@@ -26,6 +26,7 @@ import {
   Mail,
   MapPin,
   MessageSquare,
+  Percent,
   Phone,
   Search,
   ShieldCheck,
@@ -35,7 +36,12 @@ import {
   UtensilsCrossed,
   X,
 } from 'lucide-react';
-import { CITY_HUBS, CONTINENTS, DISHES } from '../data/catalog';
+import {
+  CITY_HUBS,
+  CONTINENTS,
+  CURATED_RESTAURANT_META,
+  DISHES,
+} from '../data/catalog';
 import {
   auth,
   db,
@@ -46,6 +52,8 @@ import {
 import type {
   AdminUserRecord,
   CityId,
+  CommissionConfig,
+  CommissionMode,
   ContinentId,
   CourierPrivateContact,
   CourierProfile,
@@ -53,9 +61,18 @@ import type {
   Order,
   OrderStatus,
   PartnerDishRecord,
+  RestaurantCommissionOverride,
   RestaurantPrivateContact,
   RestaurantProfile,
 } from '../types/food';
+import {
+  calculateOrderCommissionBreakdown,
+  COMMISSION_BOUNDS,
+  DEFAULT_COMMISSION_CONFIG,
+  formatCommissionPolicySummary,
+  normalizeRestaurantCommissionKey,
+  sanitizeCommissionConfig,
+} from '../utils/commission';
 import { sanitizeText, VALIDATION_BOUNDS } from '../utils/validation';
 import { CountrySelectOptions } from './CountrySelectOptions';
 import { SupportStaffInbox } from './SupportStaffInbox';
@@ -63,6 +80,8 @@ import { SupportStaffInbox } from './SupportStaffInbox';
 interface AdminPanelModalProps {
   isOpen: boolean;
   orders: Order[];
+  commissionConfig?: CommissionConfig;
+  onCommissionConfigUpdated?: (next: CommissionConfig) => void;
   onClose: () => void;
   onAdvanceOrderStatus: (orderId: string) => void;
   onRefundOrder?: (order: Order) => Promise<void> | void;
@@ -75,6 +94,7 @@ type AdminSection =
   | 'couriers'
   | 'dishes'
   | 'orders_admins'
+  | 'commission'
   | 'support';
 
 const BOOTSTRAPPED_ADMIN_EMAIL = 'cafersellii@gmail.com';
@@ -119,6 +139,8 @@ function formatFirestoreDate(value: unknown): string {
 export function AdminPanelModal({
   isOpen,
   orders,
+  commissionConfig = DEFAULT_COMMISSION_CONFIG,
+  onCommissionConfigUpdated,
   onClose,
   onAdvanceOrderStatus,
   onRefundOrder,
@@ -167,6 +189,54 @@ export function AdminPanelModal({
   const [newAdminNote, setNewAdminNote] = useState('');
   const [adminActionMsg, setAdminActionMsg] = useState('');
   const [adminActionErr, setAdminActionErr] = useState('');
+
+  // Commission settings & overrides states
+  const [commMode, setCommMode] = useState<CommissionMode>(
+    commissionConfig.commissionMode
+  );
+  const [commPct, setCommPct] = useState(
+    String(commissionConfig.restaurantCommissionPct)
+  );
+  const [commFixed, setCommFixed] = useState(
+    String(commissionConfig.fixedCommissionTry)
+  );
+  const [commMin, setCommMin] = useState(
+    String(commissionConfig.minCommissionTry)
+  );
+  const [custServiceFee, setCustServiceFee] = useState(
+    String(commissionConfig.customerServiceFeeTry)
+  );
+  const [courierSharePct, setCourierSharePct] = useState(
+    String(commissionConfig.courierSharePct)
+  );
+  const [courierMinFee, setCourierMinFee] = useState(
+    String(commissionConfig.courierMinFeeTry)
+  );
+  const [commSaving, setCommSaving] = useState(false);
+  const [commErr, setCommErr] = useState('');
+  const [simBasketTry, setSimBasketTry] = useState('500');
+  const [simDeliveryTry, setSimDeliveryTry] = useState('0');
+
+  const [restaurantOverrides, setRestaurantOverrides] = useState<
+    RestaurantCommissionOverride[]
+  >([]);
+  const [overrideRestName, setOverrideRestName] = useState('');
+  const [overrideMode, setOverrideMode] = useState<CommissionMode>('percentage');
+  const [overridePct, setOverridePct] = useState('12');
+  const [overrideFixed, setOverrideFixed] = useState('35');
+  const [overrideNote, setOverrideNote] = useState('');
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideErr, setOverrideErr] = useState('');
+
+  useEffect(() => {
+    setCommMode(commissionConfig.commissionMode);
+    setCommPct(String(commissionConfig.restaurantCommissionPct));
+    setCommFixed(String(commissionConfig.fixedCommissionTry));
+    setCommMin(String(commissionConfig.minCommissionTry));
+    setCustServiceFee(String(commissionConfig.customerServiceFeeTry));
+    setCourierSharePct(String(commissionConfig.courierSharePct));
+    setCourierMinFee(String(commissionConfig.courierMinFeeTry));
+  }, [commissionConfig]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -318,12 +388,35 @@ export function AdminPanelModal({
       );
     }
 
+    let unsubOverrides: (() => void) | undefined;
+    if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+      unsubOverrides = onSnapshot(
+        collection(db, 'restaurantCommissions'),
+        (snap) => {
+          setRestaurantOverrides(
+            snap.docs.map((d) => ({
+              id: d.id,
+              ...(d.data() as Omit<RestaurantCommissionOverride, 'id'>),
+            }))
+          );
+        },
+        (error) => {
+          handleFirestoreError(
+            error,
+            OperationType.LIST,
+            'restaurantCommissions'
+          );
+        }
+      );
+    }
+
     return () => {
       unsubRest();
       unsubDishes();
       unsubAdmins();
       if (unsubMembers) unsubMembers();
       if (unsubCouriers) unsubCouriers();
+      if (unsubOverrides) unsubOverrides();
     };
   }, [isOpen, isAdminAuthorized, user]);
 
@@ -411,6 +504,62 @@ export function AdminPanelModal({
     () => orders.reduce((sum, o) => sum + o.totalTry, 0),
     [orders]
   );
+
+  const totalPlatformCommissionTry = useMemo(
+    () =>
+      orders.reduce((sum, o) => {
+        if (o.commissionTry !== undefined || o.serviceFeeTry !== undefined) {
+          return sum + (o.commissionTry ?? 0) + (o.serviceFeeTry ?? 0);
+        }
+        const netFood = Math.max(0, o.subtotalTry - o.discountTry);
+        const est = calculateOrderCommissionBreakdown({
+          netSubtotalTry: netFood,
+          deliveryFeeTry: o.deliveryFeeTry,
+          config: commissionConfig,
+        });
+        return sum + est.commissionTry;
+      }, 0),
+    [orders, commissionConfig]
+  );
+
+  const selectableRestaurantNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const r of restaurants) names.add(r.name);
+    for (const name of Object.keys(CURATED_RESTAURANT_META)) names.add(name);
+    return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'));
+  }, [restaurants]);
+
+  const draftCommissionConfig = useMemo<CommissionConfig>(
+    () =>
+      sanitizeCommissionConfig({
+        commissionMode: commMode,
+        restaurantCommissionPct: Number(commPct),
+        fixedCommissionTry: Number(commFixed),
+        customerServiceFeeTry: Number(custServiceFee),
+        courierSharePct: Number(courierSharePct),
+        courierMinFeeTry: Number(courierMinFee),
+        minCommissionTry: Number(commMin),
+      }),
+    [
+      commMode,
+      commPct,
+      commFixed,
+      custServiceFee,
+      courierSharePct,
+      courierMinFee,
+      commMin,
+    ]
+  );
+
+  const simulatorBreakdown = useMemo(() => {
+    const basket = Math.max(0, Number(simBasketTry) || 0);
+    const delivery = Math.max(0, Number(simDeliveryTry) || 0);
+    return calculateOrderCommissionBreakdown({
+      netSubtotalTry: basket,
+      deliveryFeeTry: delivery,
+      config: draftCommissionConfig,
+    });
+  }, [simBasketTry, simDeliveryTry, draftCommissionConfig]);
 
   if (!isOpen) return null;
 
@@ -593,6 +742,142 @@ export function AdminPanelModal({
     }
   };
 
+  const handleSaveCommissionConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setCommErr('');
+    setAdminActionMsg('');
+
+    const sanitized = sanitizeCommissionConfig({
+      commissionMode: commMode,
+      restaurantCommissionPct: Number(commPct),
+      fixedCommissionTry: Number(commFixed),
+      customerServiceFeeTry: Number(custServiceFee),
+      courierSharePct: Number(courierSharePct),
+      courierMinFeeTry: Number(courierMinFee),
+      minCommissionTry: Number(commMin),
+    });
+
+    const updaterEmail = sanitizeText(
+      user.email || BOOTSTRAPPED_ADMIN_EMAIL,
+      VALIDATION_BOUNDS.emailMax
+    );
+    const safeUpdaterEmail =
+      updaterEmail.length >= VALIDATION_BOUNDS.emailMin
+        ? updaterEmail
+        : BOOTSTRAPPED_ADMIN_EMAIL;
+
+    setCommSaving(true);
+    try {
+      await setDoc(doc(db, 'platformSettings', 'commission'), {
+        commissionMode: sanitized.commissionMode,
+        restaurantCommissionPct: sanitized.restaurantCommissionPct,
+        fixedCommissionTry: sanitized.fixedCommissionTry,
+        customerServiceFeeTry: sanitized.customerServiceFeeTry,
+        courierSharePct: sanitized.courierSharePct,
+        courierMinFeeTry: sanitized.courierMinFeeTry,
+        minCommissionTry: sanitized.minCommissionTry,
+        updatedByEmail: safeUpdaterEmail,
+        updatedAt: serverTimestamp(),
+      });
+      onCommissionConfigUpdated?.({
+        ...sanitized,
+        updatedByEmail: safeUpdaterEmail,
+      });
+      setAdminActionMsg(
+        `Komisyon politikası güncellendi (${formatCommissionPolicySummary(sanitized)}).`
+      );
+    } catch (error) {
+      setCommErr('Komisyon ayarları kaydedilirken bir hata oluştu.');
+      handleFirestoreError(
+        error,
+        OperationType.WRITE,
+        'platformSettings/commission'
+      );
+    } finally {
+      setCommSaving(false);
+    }
+  };
+
+  const handleSaveRestaurantOverride = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOverrideErr('');
+    setAdminActionMsg('');
+
+    const cleanRestName = sanitizeText(overrideRestName, 80);
+    if (cleanRestName.length < 2) {
+      setOverrideErr('Lütfen geçerli bir restoran adı seçin veya yazın.');
+      return;
+    }
+
+    const restKey = normalizeRestaurantCommissionKey(cleanRestName);
+    const pct = Math.min(
+      COMMISSION_BOUNDS.pctMax,
+      Math.max(0, Math.round((Number(overridePct) || 0) * 100) / 100)
+    );
+    const fixed = Math.min(
+      COMMISSION_BOUNDS.fixedMax,
+      Math.max(0, Math.round(Number(overrideFixed) || 0))
+    );
+    const note = sanitizeText(overrideNote, COMMISSION_BOUNDS.noteMax);
+
+    setOverrideSaving(true);
+    try {
+      await setDoc(doc(db, 'restaurantCommissions', restKey), {
+        restaurantName: cleanRestName,
+        commissionMode: overrideMode,
+        restaurantCommissionPct: pct,
+        fixedCommissionTry: fixed,
+        note,
+        updatedAt: serverTimestamp(),
+      });
+      setRestaurantOverrides((prev) => {
+        const filtered = prev.filter((item) => item.id !== restKey);
+        return [
+          {
+            id: restKey,
+            restaurantName: cleanRestName,
+            commissionMode: overrideMode,
+            restaurantCommissionPct: pct,
+            fixedCommissionTry: fixed,
+            note,
+          },
+          ...filtered,
+        ];
+      });
+      setOverrideRestName('');
+      setOverrideNote('');
+      setAdminActionMsg(
+        `"${cleanRestName}" için özel komisyon tanımı kaydedildi.`
+      );
+    } catch (error) {
+      setOverrideErr('Restoran komisyon tanımı kaydedilemedi.');
+      handleFirestoreError(
+        error,
+        OperationType.WRITE,
+        `restaurantCommissions/${restKey}`
+      );
+    } finally {
+      setOverrideSaving(false);
+    }
+  };
+
+  const handleDeleteRestaurantOverride = async (override: RestaurantCommissionOverride) => {
+    try {
+      await deleteDoc(doc(db, 'restaurantCommissions', override.id));
+      setRestaurantOverrides((prev) => prev.filter((o) => o.id !== override.id));
+      setAdminActionMsg(
+        `"${override.restaurantName}" özel komisyonu kaldırıldı; platform standardı geçerli.`
+      );
+    } catch (error) {
+      handleFirestoreError(
+        error,
+        OperationType.DELETE,
+        `restaurantCommissions/${override.id}`
+      );
+    }
+  };
+
   const sectionTitleMap: Record<AdminSection, string> = {
     overview: 'Genel Bakış',
     members: 'Uygulama Üyeleri',
@@ -600,6 +885,7 @@ export function AdminPanelModal({
     couriers: 'Kurye İş Ortakları',
     dishes: 'Menü Kataloğu',
     orders_admins: 'Siparişler & Yetkiler',
+    commission: 'Komisyon & Ücretler',
     support: 'Canlı Destek Masası',
   };
 
@@ -843,6 +1129,26 @@ export function AdminPanelModal({
 
               <button
                 type="button"
+                onClick={() => setSection('commission')}
+                className={`flex items-center justify-between gap-2 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+                  section === 'commission'
+                    ? 'bg-[#D9043D] text-white'
+                    : 'text-[#575550] hover:bg-[#FAF9F7] hover:text-[#141413]'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Percent className="w-4 h-4 shrink-0" />
+                  <span>Komisyon & Ücretler</span>
+                </span>
+                <span className="font-mono tabular-nums text-[11px] opacity-80">
+                  {commissionConfig.commissionMode === 'fixed'
+                    ? `${commissionConfig.fixedCommissionTry}₺`
+                    : `%${commissionConfig.restaurantCommissionPct}`}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setSection('support')}
                 className={`flex items-center gap-2.5 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                   section === 'support'
@@ -875,8 +1181,8 @@ export function AdminPanelModal({
 
               {section === 'overview' && (
                 <div className="space-y-6">
-                  {/* Single-elevation 5-column KPI bar */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 bg-white border border-[#E6E4DF] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E6E4DF]">
+                  {/* Single-elevation 6-column KPI bar */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 bg-white border border-[#E6E4DF] rounded-xl divide-y lg:divide-y-0 lg:divide-x divide-[#E6E4DF]">
                     <button
                       type="button"
                       onClick={() => setSection('members')}
@@ -936,6 +1242,21 @@ export function AdminPanelModal({
                         {CITY_HUBS.length} ülke · 6 kıta
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setSection('commission')}
+                      className="p-5 text-left hover:bg-[#FAF9F7] transition-colors cursor-pointer"
+                    >
+                      <p className="text-xs text-[#575550] mb-1">
+                        Komisyon Geliri
+                      </p>
+                      <p className="font-mono tabular-nums text-2xl font-semibold text-[#D9043D]">
+                        {Math.round(totalPlatformCommissionTry).toLocaleString('tr-TR')} ₺
+                      </p>
+                      <p className="text-[11px] text-[#575550] mt-1 font-medium truncate">
+                        {formatCommissionPolicySummary(commissionConfig)} →
+                      </p>
+                    </button>
                   </div>
 
                   {/* Global Delivery Network Breakdown Table */}
@@ -1834,7 +2155,16 @@ export function AdminPanelModal({
                                 )}
                               </td>
                               <td className="py-3 px-4 text-right font-mono tabular-nums font-medium text-[#141413]">
-                                {Math.round(order.totalTry).toLocaleString('tr-TR')} ₺
+                                <p>
+                                  {Math.round(order.totalTry).toLocaleString('tr-TR')} ₺
+                                </p>
+                                {order.commissionTry !== undefined && (
+                                  <p className="text-[10px] text-[#D9043D]">
+                                    Komisyon:{' '}
+                                    {Math.round(order.commissionTry).toLocaleString('tr-TR')}{' '}
+                                    ₺
+                                  </p>
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <span
@@ -1960,6 +2290,520 @@ export function AdminPanelModal({
                           </div>
                         ))}
                       </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {section === 'commission' && (
+                <div className="space-y-6">
+                  {/* Global Commission & Fee Policy + Live Simulator */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    <form
+                      onSubmit={handleSaveCommissionConfig}
+                      className="lg:col-span-7 bg-white border border-[#E6E4DF] rounded-xl p-5 space-y-5"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E6E4DF]">
+                        <div>
+                          <h3 className="font-display text-base font-semibold text-[#141413]">
+                            Platform Komisyon & Ücret Politikası
+                          </h3>
+                          <p className="text-xs text-[#575550] mt-0.5">
+                            Restoran komisyonu, müşteri hizmet bedeli ve kurye kazanç payını belirleyin.
+                          </p>
+                        </div>
+                        <span className="font-mono tabular-nums text-xs font-semibold text-[#D9043D] shrink-0">
+                          {formatCommissionPolicySummary(draftCommissionConfig)}
+                        </span>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="space-y-1.5">
+                        <span className="block text-[11px] font-medium text-[#575550]">
+                          Hızlı Şablonlar
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {(
+                            [
+                              {
+                                label: 'Standart (%15)',
+                                mode: 'percentage' as CommissionMode,
+                                pct: '15',
+                                fixed: '0',
+                                min: '0',
+                                fee: '0',
+                              },
+                              {
+                                label: 'Ekonomik (%10)',
+                                mode: 'percentage' as CommissionMode,
+                                pct: '10',
+                                fixed: '0',
+                                min: '0',
+                                fee: '0',
+                              },
+                              {
+                                label: 'Sabit (45 ₺)',
+                                mode: 'fixed' as CommissionMode,
+                                pct: '0',
+                                fixed: '45',
+                                min: '0',
+                                fee: '0',
+                              },
+                              {
+                                label: 'Karma (%12 + 15 ₺)',
+                                mode: 'hybrid' as CommissionMode,
+                                pct: '12',
+                                fixed: '15',
+                                min: '35',
+                                fee: '12',
+                              },
+                            ] as const
+                          ).map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => {
+                                setCommMode(preset.mode);
+                                setCommPct(preset.pct);
+                                setCommFixed(preset.fixed);
+                                setCommMin(preset.min);
+                                setCustServiceFee(preset.fee);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-[11px] font-medium text-[#141413] hover:border-[#D9043D] hover:text-[#D9043D] transition-colors cursor-pointer"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Calculation Mode Selector */}
+                      <div className="space-y-1.5">
+                        <span className="block text-xs font-medium text-[#575550]">
+                          Komisyon Hesaplama Modeli
+                        </span>
+                        <div className="grid grid-cols-3 gap-1 p-1 bg-[#EFECE6] rounded-lg">
+                          {(
+                            [
+                              { id: 'percentage', label: 'Yüzdelik (%)' },
+                              { id: 'fixed', label: 'Sabit Tutar (₺)' },
+                              { id: 'hybrid', label: 'Karma (% + ₺)' },
+                            ] as const
+                          ).map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setCommMode(item.id)}
+                              className={`py-2 px-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                                commMode === item.id
+                                  ? 'bg-white text-[#141413] shadow-xs'
+                                  : 'text-[#575550] hover:text-[#141413]'
+                              }`}
+                            >
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Numeric Inputs */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Restoran Komisyon Oranı (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={COMMISSION_BOUNDS.pctMin}
+                            max={COMMISSION_BOUNDS.pctMax}
+                            step="0.5"
+                            disabled={commMode === 'fixed'}
+                            value={commPct}
+                            onChange={(e) => setCommPct(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums disabled:bg-[#FAF9F7] disabled:text-[#8A8780]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Sabit Sipariş Komisyonu (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={COMMISSION_BOUNDS.fixedMax}
+                            step="1"
+                            disabled={commMode === 'percentage'}
+                            value={commFixed}
+                            onChange={(e) => setCommFixed(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums disabled:bg-[#FAF9F7] disabled:text-[#8A8780]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Minimum Komisyon Tabanı (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={COMMISSION_BOUNDS.minCommissionMax}
+                            step="1"
+                            value={commMin}
+                            onChange={(e) => setCommMin(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Müşteri Hizmet Bedeli (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={COMMISSION_BOUNDS.serviceFeeMax}
+                            step="1"
+                            value={custServiceFee}
+                            onChange={(e) => setCustServiceFee(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Kurye Pay Oranı (%)
+                          </label>
+                          <input
+                            type="number"
+                            min={COMMISSION_BOUNDS.pctMin}
+                            max={COMMISSION_BOUNDS.pctMax}
+                            step="0.5"
+                            value={courierSharePct}
+                            onChange={(e) => setCourierSharePct(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-[#575550] mb-1">
+                            Kurye Minimum Ücret (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={COMMISSION_BOUNDS.courierMinFeeMax}
+                            step="1"
+                            value={courierMinFee}
+                            onChange={(e) => setCourierMinFee(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
+                          />
+                        </div>
+                      </div>
+
+                      {commErr && (
+                        <p className="text-xs text-[#DC2626] bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                          {commErr}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#E6E4DF]">
+                        <span className="text-[11px] text-[#575550]">
+                          {commissionConfig.updatedByEmail
+                            ? `Son güncelleyen: ${commissionConfig.updatedByEmail}`
+                            : 'Tüm yeni siparişlere anında uygulanır'}
+                        </span>
+                        <button
+                          type="submit"
+                          disabled={commSaving}
+                          className="px-5 py-2.5 min-h-[40px] rounded-lg bg-[#D9043D] text-white text-xs font-semibold hover:bg-[#B80032] disabled:opacity-60 transition-colors cursor-pointer whitespace-nowrap"
+                        >
+                          {commSaving
+                            ? 'Kaydediliyor...'
+                            : 'Komisyon Ayarlarını Kaydet'}
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Live Interactive Simulator */}
+                    <div className="lg:col-span-5 bg-white border border-[#E6E4DF] rounded-xl p-5 space-y-4">
+                      <div>
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-[#575550]">
+                          Canlı Hesaplama Simülatörü
+                        </p>
+                        <h4 className="font-display text-base font-semibold text-[#141413] mt-0.5">
+                          Örnek Sipariş Dağılımı
+                        </h4>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                            Örnek Sepet (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100000}
+                            value={simBasketTry}
+                            onChange={(e) => setSimBasketTry(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-mono tabular-nums"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                            Getirme Ücreti (₺)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1000}
+                            value={simDeliveryTry}
+                            onChange={(e) => setSimDeliveryTry(e.target.value)}
+                            className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-mono tabular-nums"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] p-4 space-y-2.5 text-xs">
+                        <div className="flex justify-between">
+                          <span className="text-[#575550]">Ürün Sepeti</span>
+                          <span className="font-mono tabular-nums font-medium text-[#141413]">
+                            {Math.round(Number(simBasketTry) || 0).toLocaleString('tr-TR')} ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#575550]">
+                            Müşteri Hizmet Bedeli
+                          </span>
+                          <span className="font-mono tabular-nums font-medium text-[#141413]">
+                            +{simulatorBreakdown.serviceFeeTry.toLocaleString('tr-TR')} ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-[#E6E4DF] font-semibold">
+                          <span className="text-[#141413]">Müşteri Ödemesi</span>
+                          <span className="font-mono tabular-nums text-[#141413]">
+                            {(
+                              Math.max(0, Number(simBasketTry) || 0) +
+                              Math.max(0, Number(simDeliveryTry) || 0) +
+                              simulatorBreakdown.serviceFeeTry
+                            ).toLocaleString('tr-TR')}{' '}
+                            ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-[#E6E4DF]">
+                          <span className="text-[#575550]">
+                            Restoran Komisyonu (
+                            {formatCommissionPolicySummary(draftCommissionConfig)})
+                          </span>
+                          <span className="font-mono tabular-nums font-semibold text-[#D9043D]">
+                            {simulatorBreakdown.commissionTry.toLocaleString('tr-TR')} ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#575550]">
+                            Restoran Net Hakedişi
+                          </span>
+                          <span className="font-mono tabular-nums font-semibold text-[#16A34A]">
+                            {simulatorBreakdown.restaurantNetTry.toLocaleString('tr-TR')} ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-[#575550]">
+                            Tahmini Kurye Kazancı
+                          </span>
+                          <span className="font-mono tabular-nums font-medium text-[#141413]">
+                            {simulatorBreakdown.courierEarningsTry.toLocaleString('tr-TR')} ₺
+                          </span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-[#E6E4DF] font-semibold">
+                          <span className="text-[#141413]">
+                            Toplam Platform Geliri
+                          </span>
+                          <span className="font-mono tabular-nums text-[#D9043D]">
+                            {simulatorBreakdown.totalPlatformRevenueTry.toLocaleString('tr-TR')}{' '}
+                            ₺
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Per-Restaurant Commission Overrides */}
+                  <div className="bg-white border border-[#E6E4DF] rounded-xl p-5 space-y-5">
+                    <div>
+                      <h3 className="font-display text-base font-semibold text-[#141413]">
+                        Restorana Özel Komisyon Anlaşmaları
+                      </h3>
+                      <p className="text-xs text-[#575550] mt-0.5">
+                        Belirli restoranlar için genel platform oranı yerine özel komisyon miktarı tanımlayın.
+                      </p>
+                    </div>
+
+                    {overrideErr && (
+                      <p className="text-xs text-[#DC2626] bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        {overrideErr}
+                      </p>
+                    )}
+
+                    <form
+                      onSubmit={handleSaveRestaurantOverride}
+                      className="grid grid-cols-1 sm:grid-cols-12 gap-3"
+                    >
+                      <div className="sm:col-span-4">
+                        <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                          Restoran Adı
+                        </label>
+                        <input
+                          type="text"
+                          list="sofra-commission-restaurants"
+                          value={overrideRestName}
+                          onChange={(e) => setOverrideRestName(e.target.value)}
+                          placeholder="Seçin veya restoran adı yazın"
+                          maxLength={80}
+                          required
+                          className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs"
+                        />
+                        <datalist id="sofra-commission-restaurants">
+                          {selectableRestaurantNames.map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                          Model
+                        </label>
+                        <select
+                          value={overrideMode}
+                          onChange={(e) =>
+                            setOverrideMode(e.target.value as CommissionMode)
+                          }
+                          className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
+                        >
+                          <option value="percentage">Yüzdelik (%)</option>
+                          <option value="fixed">Sabit (₺)</option>
+                          <option value="hybrid">Karma (% + ₺)</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                          Oran (%)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={COMMISSION_BOUNDS.pctMax}
+                          step="0.5"
+                          disabled={overrideMode === 'fixed'}
+                          value={overridePct}
+                          onChange={(e) => setOverridePct(e.target.value)}
+                          className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-mono tabular-nums disabled:bg-[#FAF9F7]"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                          Sabit (₺)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={COMMISSION_BOUNDS.fixedMax}
+                          step="1"
+                          disabled={overrideMode === 'percentage'}
+                          value={overrideFixed}
+                          onChange={(e) => setOverrideFixed(e.target.value)}
+                          className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs font-mono tabular-nums disabled:bg-[#FAF9F7]"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2 flex items-end">
+                        <button
+                          type="submit"
+                          disabled={overrideSaving}
+                          className="w-full px-4 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-semibold hover:bg-[#B80032] disabled:opacity-60 cursor-pointer"
+                        >
+                          {overrideSaving ? 'Kaydediliyor...' : 'Tanım Ekle'}
+                        </button>
+                      </div>
+
+                      <div className="sm:col-span-12">
+                        <input
+                          type="text"
+                          value={overrideNote}
+                          onChange={(e) => setOverrideNote(e.target.value)}
+                          placeholder="Anlaşma notu (opsiyonel, örn: Lansman iş ortağı %12 anlaşması)"
+                          maxLength={COMMISSION_BOUNDS.noteMax}
+                          className="w-full px-3 py-2 min-h-[36px] rounded-lg border border-[#E6E4DF] text-xs"
+                        />
+                      </div>
+                    </form>
+
+                    {restaurantOverrides.length > 0 ? (
+                      <div className="overflow-x-auto border border-[#E6E4DF] rounded-lg">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="border-b border-[#E6E4DF] bg-[#FAF9F7] text-[#575550]">
+                              <th className="py-2.5 px-4 font-medium">Restoran</th>
+                              <th className="py-2.5 px-4 font-medium">Komisyon</th>
+                              <th className="py-2.5 px-4 font-medium">Not</th>
+                              <th className="py-2.5 px-4 font-medium text-right">
+                                İşlem
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E6E4DF]">
+                            {restaurantOverrides.map((ov) => (
+                              <tr key={ov.id} className="hover:bg-[#FAF9F7]">
+                                <td className="py-2.5 px-4 font-medium text-[#141413]">
+                                  {ov.restaurantName}
+                                </td>
+                                <td className="py-2.5 px-4 font-mono tabular-nums font-semibold text-[#D9043D]">
+                                  {formatCommissionPolicySummary(ov)}
+                                </td>
+                                <td className="py-2.5 px-4 text-[#575550]">
+                                  {ov.note || '—'}
+                                </td>
+                                <td className="py-2.5 px-4 text-right whitespace-nowrap space-x-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOverrideRestName(ov.restaurantName);
+                                      setOverrideMode(ov.commissionMode);
+                                      setOverridePct(
+                                        String(ov.restaurantCommissionPct)
+                                      );
+                                      setOverrideFixed(
+                                        String(ov.fixedCommissionTry)
+                                      );
+                                      setOverrideNote(ov.note || '');
+                                    }}
+                                    className="px-2.5 py-1 rounded-md border border-[#E6E4DF] text-[#141413] hover:border-[#D9043D] cursor-pointer"
+                                  >
+                                    Düzenle
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleDeleteRestaurantOverride(ov)
+                                    }
+                                    className="px-2.5 py-1 rounded-md border border-[#E6E4DF] text-[#DC2626] hover:bg-red-50 cursor-pointer"
+                                  >
+                                    Kaldır
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#575550]">
+                        Henüz restorana özel tanımlanmış farklı bir komisyon oranı yok; tüm restoranlar için genel politika uygulanıyor.
+                      </p>
                     )}
                   </div>
                 </div>

@@ -39,6 +39,7 @@ import {
 } from '../lib/firebase';
 import type {
   CityId,
+  CommissionConfig,
   CourierAvailability,
   CourierPrivateContact,
   CourierProfile,
@@ -46,6 +47,7 @@ import type {
   DispatchJobRecord,
   Order,
 } from '../types/food';
+import { DEFAULT_COMMISSION_CONFIG } from '../utils/commission';
 import { sanitizeText, VALIDATION_BOUNDS } from '../utils/validation';
 import { CountrySelectOptions } from './CountrySelectOptions';
 
@@ -54,6 +56,7 @@ interface CourierWorkspaceProps {
   user: User | null;
   authReady: boolean;
   orders: Order[];
+  commissionConfig?: CommissionConfig;
   onAcceptOrderLocal: (orderId: string, courierId: string, courierName: string) => void;
   onPickupOrderLocal: (orderId: string) => void;
   onDeliverOrderLocal: (orderId: string) => void;
@@ -79,9 +82,17 @@ const AVAILABILITY_OPTIONS: {
   { id: 'offline', label: 'Çevrimdışı' },
 ];
 
-function estimateCourierFeeTry(orderTotalTry: number, deliveryFeeTry: number): number {
-  if (deliveryFeeTry > 0) return Math.max(45, deliveryFeeTry);
-  return Math.max(55, Math.round(orderTotalTry * 0.12));
+function estimateCourierFeeTry(
+  orderTotalTry: number,
+  deliveryFeeTry: number,
+  config: CommissionConfig
+): number {
+  const minFee = Math.round(Math.max(0, config.courierMinFeeTry));
+  if (deliveryFeeTry > 0) return Math.max(minFee, Math.round(deliveryFeeTry));
+  return Math.max(
+    minFee,
+    Math.round(orderTotalTry * (config.courierSharePct / 100))
+  );
 }
 
 export function CourierWorkspace({
@@ -89,6 +100,7 @@ export function CourierWorkspace({
   user,
   authReady,
   orders,
+  commissionConfig = DEFAULT_COMMISSION_CONFIG,
   onAcceptOrderLocal,
   onPickupOrderLocal,
   onDeliverOrderLocal,
@@ -388,7 +400,8 @@ export function CourierWorkspace({
         totalTry: order.totalTry,
         courierEarningsTry: estimateCourierFeeTry(
           order.totalTry,
-          order.deliveryFeeTry
+          order.deliveryFeeTry,
+          commissionConfig
         ),
         estimatedArrival: order.estimatedArrival,
         paymentMethod: order.paymentMethod,
@@ -398,7 +411,7 @@ export function CourierWorkspace({
     }
 
     return items;
-  }, [dispatchJobs, orders, skippedOrderIds, zoneFilter, courier]);
+  }, [dispatchJobs, orders, skippedOrderIds, zoneFilter, courier, commissionConfig]);
 
   // Merge claimed cloud orders + local orders claimed by this courier
   const myDeliveries = useMemo(() => {
@@ -446,7 +459,8 @@ export function CourierWorkspace({
         totalTry: co.totalTry,
         courierEarningsTry: estimateCourierFeeTry(
           co.totalTry,
-          co.deliveryFeeTry
+          co.deliveryFeeTry,
+          commissionConfig
         ),
         paymentMethod: co.paymentMethod,
         paymentStatus: co.paymentStatus,
@@ -483,7 +497,8 @@ export function CourierWorkspace({
           totalTry: order.totalTry,
           courierEarningsTry: estimateCourierFeeTry(
             order.totalTry,
-            order.deliveryFeeTry
+            order.deliveryFeeTry,
+            commissionConfig
           ),
           paymentMethod: order.paymentMethod,
           paymentStatus: order.paymentStatus,
@@ -497,7 +512,7 @@ export function CourierWorkspace({
     }
 
     return Array.from(byOrderNumber.values());
-  }, [claimedCloudOrders, orders, user]);
+  }, [claimedCloudOrders, orders, user, commissionConfig]);
 
   const activeDeliveries = useMemo(
     () => myDeliveries.filter((d) => d.status !== 'delivered'),

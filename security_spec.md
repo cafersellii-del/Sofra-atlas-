@@ -9,6 +9,7 @@
 6. Platform administration (`/admins/{adminId}` and cross-restaurant moderation) requires `request.auth.token.email_verified == true` and either the bootstrapped admin email (`cafersellii@gmail.com`) or an existing `/admins/{request.auth.uid}` record. Non-admins cannot self-assign admin privileges.
 7. Customer orders (`/orders/{orderId}`) require verified sign-in (`ownerId == request.auth.uid`), strict bounded schema keys, and immutable `ownerId`/`orderNumber`/`createdAt`. Customers can only advance `status` while non-delivered; refunds (`paymentStatus`, `refundId`) are restricted to verified admins.
 8. Saved payment cards (`/users/{userId}/savedCards/{cardId}`) store strictly tokenized metadata (`last4`, `brand`, `expiry`, `label`)—never raw PAN or CVV—and are readable/writable exclusively by `request.auth.uid == userId`.
+9. Platform commission configuration (`/platformSettings/commission`) and per-restaurant commission overrides (`/restaurantCommissions/{restaurantId}`) contain zero PII, are strictly bounded (`restaurantCommissionPct` 0–50, `fixedCommissionTry` 0–5000, `customerServiceFeeTry` 0–1000, `courierSharePct` 0–50, `courierMinFeeTry` 0–1000, `minCommissionTry` 0–5000), require `updatedAt == request.time`, and are writable exclusively by verified admins (`isAdmin()`).
 
 ## 2. Dirty Dozen Adversarial Payloads
 1. Unauthenticated create on `/restaurants/r1` -> PERMISSION_DENIED
@@ -22,4 +23,4 @@
 9. Updating immutable `ownerId`, `orderNumber`, or `createdAt` on `/dishes/{dishId}` or `/orders/{orderId}` -> PERMISSION_DENIED
 10. Oversized string (> 240 chars in `description`) or empty `itemsSummary` array -> PERMISSION_DENIED
 11. Resource poisoning with >128 char invalid document ID -> PERMISSION_DENIED
-12. Non-admin self-registration in `/admins/{uid}` or customer modifying `paymentStatus`/`refundId` on `/orders/{orderId}` -> PERMISSION_DENIED
+12. Non-admin self-registration in `/admins/{uid}`, customer modifying `paymentStatus`/`refundId` on `/orders/{orderId}`, or non-admin / out-of-bounds write (`restaurantCommissionPct: 99`) to `/platformSettings/commission` or `/restaurantCommissions/{restaurantId}` -> PERMISSION_DENIED

@@ -50,11 +50,18 @@ import { registerOrderSupportMetadata } from './hooks/useSupportChat';
 import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { GOOGLE_MAPS_API_KEY } from './lib/maps';
 import { LanguageProvider } from './i18n/LanguageContext';
+import {
+  calculateOrderCommissionBreakdown,
+  COMMISSION_STORAGE_KEY,
+  DEFAULT_COMMISSION_CONFIG,
+  sanitizeCommissionConfig,
+} from './utils/commission';
 import { refundOnlinePayment } from './utils/payment';
 import { sanitizeText, VALIDATION_BOUNDS } from './utils/validation';
 import type {
   CartItem,
   CityId,
+  CommissionConfig,
   ContinentId,
   CourierOrderStatus,
   CuisineCategory,
@@ -222,6 +229,27 @@ export default function App() {
       return INITIAL_ORDERS;
     }
   });
+
+  const [commissionConfig, setCommissionConfig] = useState<CommissionConfig>(() => {
+    try {
+      const saved = localStorage.getItem(COMMISSION_STORAGE_KEY);
+      return saved
+        ? sanitizeCommissionConfig(JSON.parse(saved) as Partial<CommissionConfig>)
+        : { ...DEFAULT_COMMISSION_CONFIG };
+    } catch {
+      return { ...DEFAULT_COMMISSION_CONFIG };
+    }
+  });
+
+  const handleCommissionConfigUpdated = useCallback((next: CommissionConfig) => {
+    const clean = sanitizeCommissionConfig(next);
+    setCommissionConfig(clean);
+    try {
+      localStorage.setItem(COMMISSION_STORAGE_KEY, JSON.stringify(clean));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, []);
 
   const prevOrderStatusesRef = useRef<Record<string, OrderStatus>>(
     Object.fromEntries(orders.map((o) => [o.id, o.status]))
@@ -446,6 +474,10 @@ export default function App() {
             subtotalTry: number;
             discountTry: number;
             deliveryFeeTry: number;
+            serviceFeeTry?: number;
+            commissionRatePct?: number;
+            commissionTry?: number;
+            restaurantNetTry?: number;
             totalTry: number;
             status: OrderStatus;
             estimatedArrival: string;
@@ -493,6 +525,10 @@ export default function App() {
             subtotalTry: data.subtotalTry,
             discountTry: data.discountTry,
             deliveryFeeTry: data.deliveryFeeTry,
+            serviceFeeTry: data.serviceFeeTry,
+            commissionRatePct: data.commissionRatePct,
+            commissionTry: data.commissionTry,
+            restaurantNetTry: data.restaurantNetTry,
             totalTry: data.totalTry,
             status: data.status,
             estimatedArrival: data.estimatedArrival,
@@ -573,6 +609,33 @@ export default function App() {
       },
       (error) => {
         handleFirestoreError(error, OperationType.LIST, 'dishes');
+      }
+    );
+    return () => unsub();
+  }, []);
+
+  // Subscribe to platform-wide commission & fee policy
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'platformSettings', 'commission'),
+      (snap) => {
+        if (!snap.exists()) return;
+        const clean = sanitizeCommissionConfig(
+          snap.data() as Partial<CommissionConfig>
+        );
+        setCommissionConfig(clean);
+        try {
+          localStorage.setItem(COMMISSION_STORAGE_KEY, JSON.stringify(clean));
+        } catch {
+          // Ignore storage quota errors
+        }
+      },
+      (error) => {
+        handleFirestoreError(
+          error,
+          OperationType.GET,
+          'platformSettings/commission'
+        );
       }
     );
     return () => unsub();
@@ -1146,14 +1209,43 @@ export default function App() {
         )
       );
       const safeTotalTry = Math.max(1, Math.min(500000, order.totalTry || 1));
-      const courierEarningsTry = Math.max(
+      const netSubtotalTry = Math.max(0, order.subtotalTry - order.discountTry);
+      const fallbackBreakdown = calculateOrderCommissionBreakdown({
+        netSubtotalTry,
+        deliveryFeeTry: order.deliveryFeeTry,
+        config: commissionConfig,
+      });
+      const safeServiceFeeTry = Math.max(
         0,
         Math.min(
-          50000,
-          order.deliveryFeeTry > 0
-            ? Math.max(45, order.deliveryFeeTry)
-            : Math.max(55, Math.round(safeTotalTry * 0.12))
+          10000,
+          Math.round(order.serviceFeeTry ?? fallbackBreakdown.serviceFeeTry)
         )
+      );
+      const safeCommissionRatePct = Math.max(
+        0,
+        Math.min(
+          100,
+          order.commissionRatePct ?? fallbackBreakdown.effectiveRatePct
+        )
+      );
+      const safeCommissionTry = Math.max(
+        0,
+        Math.min(
+          500000,
+          Math.round(order.commissionTry ?? fallbackBreakdown.commissionTry)
+        )
+      );
+      const safeRestaurantNetTry = Math.max(
+        0,
+        Math.min(
+          500000,
+          Math.round(order.restaurantNetTry ?? fallbackBreakdown.restaurantNetTry)
+        )
+      );
+      const courierEarningsTry = Math.max(
+        0,
+        Math.min(50000, fallbackBreakdown.courierEarningsTry)
       );
 
       const batch = writeBatch(db);
@@ -1189,6 +1281,10 @@ export default function App() {
         subtotalTry: order.subtotalTry,
         discountTry: order.discountTry,
         deliveryFeeTry: order.deliveryFeeTry,
+        serviceFeeTry: safeServiceFeeTry,
+        commissionRatePct: safeCommissionRatePct,
+        commissionTry: safeCommissionTry,
+        restaurantNetTry: safeRestaurantNetTry,
         totalTry: safeTotalTry,
         status: order.status,
         estimatedArrival: safeEstimatedArrival,
@@ -1618,6 +1714,7 @@ export default function App() {
         currentUser={currentUser}
         memberProfile={memberProfile}
         savedCards={savedCards}
+        commissionConfig={commissionConfig}
         onSaveCard={handleSaveCard}
         onDeleteSavedCard={handleDeleteSavedCard}
         onClose={() => setIsCartOpen(false)}
@@ -1686,6 +1783,7 @@ export default function App() {
         isOpen={isRestaurantPortalOpen}
         orders={orders}
         initialRole={partnerPortalRole}
+        commissionConfig={commissionConfig}
         onClose={() => setIsRestaurantPortalOpen(false)}
         onOpenExtensionStudio={() => setIsExtensionStudioOpen(true)}
         onAdvanceOrderStatus={handleAdvanceOrderStatus}
@@ -1730,6 +1828,8 @@ export default function App() {
       <AdminPanelModal
         isOpen={isAdminPanelOpen}
         orders={orders}
+        commissionConfig={commissionConfig}
+        onCommissionConfigUpdated={handleCommissionConfigUpdated}
         onClose={() => setIsAdminPanelOpen(false)}
         onAdvanceOrderStatus={handleAdvanceOrderStatus}
         onRefundOrder={handleRefundOrder}

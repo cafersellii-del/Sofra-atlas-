@@ -891,6 +891,16 @@ export function OrdersPanel({
                             : ''}
                         </p>
                       )}
+                      {(order.serviceFeeTry ?? 0) > 0 && (
+                        <p className="font-mono tabular-nums text-[11px] text-[#575550] mt-0.5">
+                          Hizmet Bedeli:{' '}
+                          {formatPrice(
+                            order.serviceFeeTry!,
+                            order.cityId,
+                            currencyMode
+                          )}
+                        </p>
+                      )}
                       <p className="font-mono tabular-nums text-sm font-semibold text-[#141413] mt-0.5">
                         Toplam:{' '}
                         {formatPrice(order.totalTry, order.cityId, currencyMode)}

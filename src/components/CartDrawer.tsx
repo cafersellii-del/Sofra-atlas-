@@ -23,7 +23,8 @@ import {
   getDistrictsForProvince,
   getProvincesForCountry,
 } from '../data/locations';
-import { auth, googleProvider } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
   CITY_HUB_ANCHORS,
   notifyQuotaExceededIfNeeded,
@@ -33,14 +34,21 @@ import type {
   CardBrand,
   CartItem,
   CityId,
+  CommissionConfig,
   CurrencyMode,
   MemberProfile,
   Order,
   PaymentMethod,
   PaymentReceipt,
+  RestaurantCommissionOverride,
   SavedCardRecord,
   WalletProvider,
 } from '../types/food';
+import {
+  calculateOrderCommissionBreakdown,
+  DEFAULT_COMMISSION_CONFIG,
+  normalizeRestaurantCommissionKey,
+} from '../utils/commission';
 import { formatPrice } from '../utils/currency';
 import {
   confirm3DSPayment,
@@ -67,6 +75,7 @@ interface CartDrawerProps {
   currentUser: User | null;
   memberProfile?: MemberProfile | null;
   savedCards: SavedCardRecord[];
+  commissionConfig?: CommissionConfig;
   onSaveCard: (card: Omit<SavedCardRecord, 'id' | 'ownerId'>) => Promise<void>;
   onDeleteSavedCard: (cardId: string) => Promise<void>;
   onClose: () => void;
@@ -168,6 +177,7 @@ export function CartDrawer({
   currentUser,
   memberProfile = null,
   savedCards,
+  commissionConfig = DEFAULT_COMMISSION_CONFIG,
   onSaveCard,
   onDeleteSavedCard,
   onClose,
@@ -230,6 +240,8 @@ export function CartDrawer({
   const [otpInput, setOtpInput] = useState('');
   const [otpError, setOtpError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [restaurantOverride, setRestaurantOverride] =
+    useState<RestaurantCommissionOverride | null>(null);
 
   useEffect(() => {
     if (initialDeliveryAddress && !address.trim()) {
@@ -285,6 +297,38 @@ export function CartDrawer({
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
+  const activeCartRestaurantName = items[0]?.dish.restaurantName ?? '';
+  useEffect(() => {
+    let active = true;
+    if (!isOpen || !activeCartRestaurantName) {
+      setRestaurantOverride(null);
+      return;
+    }
+
+    const overrideKey = normalizeRestaurantCommissionKey(activeCartRestaurantName);
+    const overridePath = `restaurantCommissions/${overrideKey}`;
+    getDoc(doc(db, 'restaurantCommissions', overrideKey))
+      .then((snap) => {
+        if (!active) return;
+        if (snap.exists()) {
+          setRestaurantOverride({
+            id: snap.id,
+            ...(snap.data() as Omit<RestaurantCommissionOverride, 'id'>),
+          });
+        } else {
+          setRestaurantOverride(null);
+        }
+      })
+      .catch((error) => {
+        if (active) setRestaurantOverride(null);
+        handleFirestoreError(error, OperationType.GET, overridePath);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, activeCartRestaurantName]);
+
   if (!isOpen) return null;
 
   const activeHub =
@@ -336,7 +380,14 @@ export function CartDrawer({
     freeDeliveryRemainingTry === 0
       ? 0
       : baseDeliveryFeeTry;
-  const totalTry = netSubtotalTry + deliveryFeeTry;
+  const commissionBreakdown = calculateOrderCommissionBreakdown({
+    netSubtotalTry,
+    deliveryFeeTry,
+    config: commissionConfig,
+    override: restaurantOverride,
+  });
+  const serviceFeeTry = commissionBreakdown.serviceFeeTry;
+  const totalTry = netSubtotalTry + deliveryFeeTry + serviceFeeTry;
 
   const detectedBrand = detectCardBrand(cardNumber);
   const cardDigits = digitsOnly(cardNumber);
@@ -403,6 +454,10 @@ export function CartDrawer({
       subtotalTry,
       discountTry,
       deliveryFeeTry,
+      serviceFeeTry,
+      commissionRatePct: commissionBreakdown.effectiveRatePct,
+      commissionTry: commissionBreakdown.commissionTry,
+      restaurantNetTry: commissionBreakdown.restaurantNetTry,
       totalTry,
       status: 'received',
       estimatedArrival: activeHub.avgDelivery,
@@ -951,6 +1006,14 @@ export function CartDrawer({
                     : formatPrice(deliveryFeeTry, displayCityId, currencyMode)}
                 </span>
               </div>
+              {serviceFeeTry > 0 && (
+                <div className="flex justify-between text-xs text-[#575550]">
+                  <span>Platform Hizmet Bedeli</span>
+                  <span className="font-mono tabular-nums text-[#141413]">
+                    {formatPrice(serviceFeeTry, displayCityId, currencyMode)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-base font-semibold text-[#141413] pt-2 border-t border-[#E6E4DF]">
                 <span>Toplam</span>
                 <span className="font-mono tabular-nums">
@@ -1650,7 +1713,15 @@ export function CartDrawer({
               )}
             </div>
 
-            <div className="px-6 py-5 border-t border-[#E6E4DF] bg-[#FAF9F7] space-y-3">
+            <div className="px-6 py-5 border-t border-[#E6E4DF] bg-[#FAF9F7] space-y-2.5">
+              {serviceFeeTry > 0 && (
+                <div className="flex justify-between items-center text-xs text-[#575550]">
+                  <span>Platform Hizmet Bedeli dahil</span>
+                  <span className="font-mono tabular-nums text-[#141413]">
+                    {formatPrice(serviceFeeTry, displayCityId, currencyMode)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <span className="text-sm text-[#575550]">
                   Ödenecek Tutar ({activeHub.avgDelivery})

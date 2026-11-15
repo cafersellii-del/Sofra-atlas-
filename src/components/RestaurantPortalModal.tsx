@@ -9,6 +9,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -50,12 +51,20 @@ import {
 } from '../lib/firebase';
 import type {
   CityId,
+  CommissionConfig,
   CuisineCategory,
   Order,
   PartnerDishRecord,
+  RestaurantCommissionOverride,
   RestaurantPrivateContact,
   RestaurantProfile,
 } from '../types/food';
+import {
+  calculateOrderCommissionBreakdown,
+  DEFAULT_COMMISSION_CONFIG,
+  formatCommissionPolicySummary,
+  normalizeRestaurantCommissionKey,
+} from '../utils/commission';
 import { CountrySelectOptions } from './CountrySelectOptions';
 import { CourierWorkspace } from './CourierWorkspace';
 import { SupportStaffInbox } from './SupportStaffInbox';
@@ -70,6 +79,7 @@ interface RestaurantPortalModalProps {
   isOpen: boolean;
   orders?: Order[];
   initialRole?: 'restaurant' | 'courier';
+  commissionConfig?: CommissionConfig;
   onClose: () => void;
   onOpenExtensionStudio: () => void;
   onAdvanceOrderStatus?: (orderId: string) => void;
@@ -91,6 +101,7 @@ export function RestaurantPortalModal({
   isOpen,
   orders = [],
   initialRole = 'restaurant',
+  commissionConfig = DEFAULT_COMMISSION_CONFIG,
   onClose,
   onOpenExtensionStudio,
   onAdvanceOrderStatus,
@@ -110,6 +121,8 @@ export function RestaurantPortalModal({
   const [orderScope, setOrderScope] = useState<'mine' | 'all'>('mine');
 
   const [restaurant, setRestaurant] = useState<RestaurantProfile | null>(null);
+  const [restaurantOverride, setRestaurantOverride] =
+    useState<RestaurantCommissionOverride | null>(null);
   const [privateContact, setPrivateContact] =
     useState<RestaurantPrivateContact | null>(null);
   const [myDishes, setMyDishes] = useState<PartnerDishRecord[]>([]);
@@ -262,6 +275,38 @@ export function RestaurantPortalModal({
       unsubDishes();
     };
   }, [authReady, user]);
+
+  // Fetch per-restaurant commission override if configured
+  useEffect(() => {
+    let active = true;
+    if (!isOpen || !restaurant?.name) {
+      setRestaurantOverride(null);
+      return;
+    }
+
+    const key = normalizeRestaurantCommissionKey(restaurant.name);
+    const overridePath = `restaurantCommissions/${key}`;
+    getDoc(doc(db, 'restaurantCommissions', key))
+      .then((snap) => {
+        if (!active) return;
+        if (snap.exists()) {
+          setRestaurantOverride({
+            id: snap.id,
+            ...(snap.data() as Omit<RestaurantCommissionOverride, 'id'>),
+          });
+        } else {
+          setRestaurantOverride(null);
+        }
+      })
+      .catch((error) => {
+        if (active) setRestaurantOverride(null);
+        handleFirestoreError(error, OperationType.GET, overridePath);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, restaurant?.name]);
 
   if (!isOpen) return null;
 
@@ -772,6 +817,7 @@ export function RestaurantPortalModal({
               user={user}
               authReady={authReady}
               orders={orders}
+              commissionConfig={commissionConfig}
               onAcceptOrderLocal={(orderId, courierId, courierName) =>
                 onAcceptOrderCourier?.(orderId, courierId, courierName)
               }
@@ -1118,6 +1164,13 @@ export function RestaurantPortalModal({
                   </h3>
                   <p className="text-xs text-[#575550] mt-1">
                     {restaurant.tagline}
+                  </p>
+                  <p className="text-[11px] font-mono tabular-nums text-[#D9043D] mt-1.5">
+                    Aktif Komisyon:{' '}
+                    {formatCommissionPolicySummary(
+                      restaurantOverride ?? commissionConfig
+                    )}{' '}
+                    {restaurantOverride ? '(Özel Anlaşma)' : '(Platform Standardı)'}
                   </p>
                 </div>
 
@@ -1561,67 +1614,153 @@ export function RestaurantPortalModal({
                       Henüz aktif sipariş bulunmuyor.
                     </div>
                   ) : (
-                    <div className="divide-y divide-[#E6E4DF] border border-[#E6E4DF] rounded-xl overflow-hidden bg-white">
-                      {visibleKitchenOrders.map((order) => {
-                        const statusLabel =
-                          order.status === 'received'
-                            ? 'Onay Bekliyor'
-                            : order.status === 'preparing'
-                              ? 'Mutfakta Hazırlanıyor'
-                              : order.status === 'on_the_way'
-                                ? 'Kuryede / Yolda'
-                                : 'Teslim Edildi';
-                        return (
-                          <div
-                            key={order.id}
-                            className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                          >
-                            <div className="min-w-0 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <span className="font-mono tabular-nums font-semibold text-[#D9043D]">
-                                  #{order.id}
-                                </span>
-                                <span className="text-[#8A8780]">·</span>
-                                <span className="font-medium text-[#141413]">
-                                  {order.cityName} · {order.neighborhood}
-                                </span>
-                                <span className="text-[#8A8780]">·</span>
-                                <span className="text-[#575550]">
-                                  {statusLabel}
-                                </span>
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 bg-[#FAF9F7] border border-[#E6E4DF] rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-[#E6E4DF]">
+                        {(() => {
+                          let grossSum = 0;
+                          let commissionSum = 0;
+                          let netSum = 0;
+                          for (const ord of visibleKitchenOrders) {
+                            const netFood = Math.max(
+                              0,
+                              ord.subtotalTry - ord.discountTry
+                            );
+                            const calc = calculateOrderCommissionBreakdown({
+                              netSubtotalTry: netFood,
+                              deliveryFeeTry: ord.deliveryFeeTry,
+                              config: commissionConfig,
+                              override: restaurantOverride,
+                            });
+                            const ordComm =
+                              ord.commissionTry ?? calc.commissionTry;
+                            const ordNet =
+                              ord.restaurantNetTry ??
+                              Math.max(0, netFood - ordComm);
+                            grossSum += netFood;
+                            commissionSum += ordComm;
+                            netSum += ordNet;
+                          }
+                          return (
+                            <>
+                              <div className="p-3.5">
+                                <p className="text-[11px] text-[#575550]">
+                                  Brüt Yemek Tutarı
+                                </p>
+                                <p className="font-mono tabular-nums text-base font-semibold text-[#141413] mt-0.5">
+                                  {Math.round(grossSum).toLocaleString('tr-TR')} ₺
+                                </p>
                               </div>
-                              <p className="text-sm font-medium text-[#141413] truncate">
-                                {order.items
-                                  .map((it) => `${it.quantity}× ${it.dishName}`)
-                                  .join(', ')}
-                              </p>
-                              <p className="text-xs text-[#575550] flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-[#D9043D]" />
-                                <span>
-                                  Kurye: {order.courierName || 'Kurye Bekleniyor'} ·{' '}
-                                  {order.estimatedArrival}
-                                </span>
-                              </p>
-                            </div>
+                              <div className="p-3.5">
+                                <p className="text-[11px] text-[#575550]">
+                                  Platform Komisyonu (
+                                  {formatCommissionPolicySummary(
+                                    restaurantOverride ?? commissionConfig
+                                  )}
+                                  )
+                                </p>
+                                <p className="font-mono tabular-nums text-base font-semibold text-[#D9043D] mt-0.5">
+                                  -{Math.round(commissionSum).toLocaleString('tr-TR')} ₺
+                                </p>
+                              </div>
+                              <div className="p-3.5">
+                                <p className="text-[11px] text-[#575550]">
+                                  Net Mutfak Hakedişi
+                                </p>
+                                <p className="font-mono tabular-nums text-base font-semibold text-[#16A34A] mt-0.5">
+                                  {Math.round(netSum).toLocaleString('tr-TR')} ₺
+                                </p>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
 
-                            <div className="flex items-center gap-2.5 shrink-0">
-                              <span className="font-mono tabular-nums text-sm font-semibold text-[#141413]">
-                                {Math.round(order.totalTry).toLocaleString('tr-TR')} ₺
-                              </span>
-                              {order.status === 'received' && onAdvanceOrderStatus && (
-                                <button
-                                  type="button"
-                                  onClick={() => onAdvanceOrderStatus(order.id)}
-                                  className="px-3.5 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] transition-colors cursor-pointer whitespace-nowrap"
-                                >
-                                  Mutfağa Al / Hazırla
-                                </button>
-                              )}
+                      <div className="divide-y divide-[#E6E4DF] border border-[#E6E4DF] rounded-xl overflow-hidden bg-white">
+                        {visibleKitchenOrders.map((order) => {
+                          const statusLabel =
+                            order.status === 'received'
+                              ? 'Onay Bekliyor'
+                              : order.status === 'preparing'
+                                ? 'Mutfakta Hazırlanıyor'
+                                : order.status === 'on_the_way'
+                                  ? 'Kuryede / Yolda'
+                                  : 'Teslim Edildi';
+                          const netFood = Math.max(
+                            0,
+                            order.subtotalTry - order.discountTry
+                          );
+                          const calc = calculateOrderCommissionBreakdown({
+                            netSubtotalTry: netFood,
+                            deliveryFeeTry: order.deliveryFeeTry,
+                            config: commissionConfig,
+                            override: restaurantOverride,
+                          });
+                          const ordCommission =
+                            order.commissionTry ?? calc.commissionTry;
+                          const ordNet =
+                            order.restaurantNetTry ??
+                            Math.max(0, netFood - ordCommission);
+
+                          return (
+                            <div
+                              key={order.id}
+                              className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                            >
+                              <div className="min-w-0 space-y-1">
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="font-mono tabular-nums font-semibold text-[#D9043D]">
+                                    #{order.id}
+                                  </span>
+                                  <span className="text-[#8A8780]">·</span>
+                                  <span className="font-medium text-[#141413]">
+                                    {order.cityName} · {order.neighborhood}
+                                  </span>
+                                  <span className="text-[#8A8780]">·</span>
+                                  <span className="text-[#575550]">
+                                    {statusLabel}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-medium text-[#141413] truncate">
+                                  {order.items
+                                    .map((it) => `${it.quantity}× ${it.dishName}`)
+                                    .join(', ')}
+                                </p>
+                                <p className="text-xs text-[#575550] flex items-center gap-1.5">
+                                  <Clock className="w-3.5 h-3.5 text-[#D9043D]" />
+                                  <span>
+                                    Kurye: {order.courierName || 'Kurye Bekleniyor'} ·{' '}
+                                    {order.estimatedArrival}
+                                  </span>
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3 shrink-0">
+                                <div className="text-right">
+                                  <span className="font-mono tabular-nums text-sm font-semibold text-[#141413] block">
+                                    {Math.round(order.totalTry).toLocaleString('tr-TR')} ₺
+                                  </span>
+                                  <span className="font-mono tabular-nums text-[11px] text-[#575550] block">
+                                    Komisyon: -{Math.round(ordCommission).toLocaleString('tr-TR')} ₺ · Net:{' '}
+                                    <strong className="text-[#16A34A]">
+                                      {Math.round(ordNet).toLocaleString('tr-TR')} ₺
+                                    </strong>
+                                  </span>
+                                </div>
+                                {order.status === 'received' && onAdvanceOrderStatus && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onAdvanceOrderStatus(order.id)}
+                                    className="px-3.5 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] transition-colors cursor-pointer whitespace-nowrap"
+                                  >
+                                    Mutfağa Al / Hazırla
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
               ) : activeTab === 'support' ? (

@@ -387,6 +387,18 @@
         "deliveryFeeTry": {
           "type": "number"
         },
+        "serviceFeeTry": {
+          "type": "number"
+        },
+        "commissionRatePct": {
+          "type": "number"
+        },
+        "commissionTry": {
+          "type": "number"
+        },
+        "restaurantNetTry": {
+          "type": "number"
+        },
         "totalTry": {
           "type": "number"
         },
@@ -796,6 +808,94 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "CommissionConfig": {
+      "title": "CommissionConfig",
+      "description": "Global platform commission and fee configuration managed by platform administrators.",
+      "type": "object",
+      "properties": {
+        "commissionMode": {
+          "type": "string",
+          "enum": ["percentage", "fixed", "hybrid"]
+        },
+        "restaurantCommissionPct": {
+          "type": "number"
+        },
+        "fixedCommissionTry": {
+          "type": "number"
+        },
+        "customerServiceFeeTry": {
+          "type": "number"
+        },
+        "courierSharePct": {
+          "type": "number"
+        },
+        "courierMinFeeTry": {
+          "type": "number"
+        },
+        "minCommissionTry": {
+          "type": "number"
+        },
+        "updatedByEmail": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "commissionMode",
+        "restaurantCommissionPct",
+        "fixedCommissionTry",
+        "customerServiceFeeTry",
+        "courierSharePct",
+        "courierMinFeeTry",
+        "minCommissionTry",
+        "updatedByEmail",
+        "updatedAt"
+      ]
+    },
+    "RestaurantCommissionOverride": {
+      "title": "RestaurantCommissionOverride",
+      "description": "Per-restaurant custom commission rate or fixed fee override set by administrators.",
+      "type": "object",
+      "properties": {
+        "restaurantName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "commissionMode": {
+          "type": "string",
+          "enum": ["percentage", "fixed", "hybrid"]
+        },
+        "restaurantCommissionPct": {
+          "type": "number"
+        },
+        "fixedCommissionTry": {
+          "type": "number"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "restaurantName",
+        "commissionMode",
+        "restaurantCommissionPct",
+        "fixedCommissionTry",
+        "note",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -838,6 +938,14 @@
     "/users/{userId}/savedCards/{cardId}": {
       "schema": { "$ref": "#/entities/SavedCard" },
       "description": "Owner-only tokenized card summaries (last4, brand, expiry) for faster checkout."
+    },
+    "/platformSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/CommissionConfig" },
+      "description": "Global platform configuration (e.g., /platformSettings/commission) writable only by verified admins."
+    },
+    "/restaurantCommissions/{restaurantId}": {
+      "schema": { "$ref": "#/entities/RestaurantCommissionOverride" },
+      "description": "Per-restaurant custom commission rates and fixed fee overrides writable only by verified admins."
     }
   }
 }

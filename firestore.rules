@@ -162,8 +162,10 @@ service cloud.firestore {
           'paymentMethod', 'paymentStatus', 'gatewayLabel', 'transactionId',
           'authCode', 'cardBrand', 'cardLast4', 'refundId',
           'deliveryPreferences', 'itemsSummary', 'subtotalTry', 'discountTry',
-          'deliveryFeeTry', 'totalTry', 'status', 'estimatedArrival',
-          'courierName', 'courierId', 'courierStatus', 'createdAt', 'updatedAt'
+          'deliveryFeeTry', 'serviceFeeTry', 'commissionRatePct',
+          'commissionTry', 'restaurantNetTry', 'totalTry', 'status',
+          'estimatedArrival', 'courierName', 'courierId', 'courierStatus',
+          'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
         && (
@@ -196,6 +198,10 @@ service cloud.firestore {
         && data.subtotalTry is number && data.subtotalTry >= 0 && data.subtotalTry <= 500000
         && data.discountTry is number && data.discountTry >= 0 && data.discountTry <= 500000
         && data.deliveryFeeTry is number && data.deliveryFeeTry >= 0 && data.deliveryFeeTry <= 10000
+        && (!('serviceFeeTry' in data) || (data.serviceFeeTry is number && data.serviceFeeTry >= 0 && data.serviceFeeTry <= 10000))
+        && (!('commissionRatePct' in data) || (data.commissionRatePct is number && data.commissionRatePct >= 0 && data.commissionRatePct <= 100))
+        && (!('commissionTry' in data) || (data.commissionTry is number && data.commissionTry >= 0 && data.commissionTry <= 500000))
+        && (!('restaurantNetTry' in data) || (data.restaurantNetTry is number && data.restaurantNetTry >= 0 && data.restaurantNetTry <= 500000))
         && data.totalTry is number && data.totalTry >= 1 && data.totalTry <= 500000
         && data.status in ['received', 'preparing', 'on_the_way', 'delivered']
         && data.estimatedArrival is string && data.estimatedArrival.size() >= 2 && data.estimatedArrival.size() <= 40
@@ -321,6 +327,45 @@ service cloud.firestore {
         && data.courierName is string && data.courierName.size() <= 60
         && data.status in ['open', 'accepted', 'picked_up', 'delivered']
         && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCommissionConfig(data) {
+      return data.keys().hasAll([
+          'commissionMode', 'restaurantCommissionPct', 'fixedCommissionTry',
+          'customerServiceFeeTry', 'courierSharePct', 'courierMinFeeTry',
+          'minCommissionTry', 'updatedByEmail', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'commissionMode', 'restaurantCommissionPct', 'fixedCommissionTry',
+          'customerServiceFeeTry', 'courierSharePct', 'courierMinFeeTry',
+          'minCommissionTry', 'updatedByEmail', 'updatedAt'
+        ])
+        && data.commissionMode in ['percentage', 'fixed', 'hybrid']
+        && data.restaurantCommissionPct is number && data.restaurantCommissionPct >= 0 && data.restaurantCommissionPct <= 50
+        && data.fixedCommissionTry is number && data.fixedCommissionTry >= 0 && data.fixedCommissionTry <= 5000
+        && data.customerServiceFeeTry is number && data.customerServiceFeeTry >= 0 && data.customerServiceFeeTry <= 1000
+        && data.courierSharePct is number && data.courierSharePct >= 0 && data.courierSharePct <= 50
+        && data.courierMinFeeTry is number && data.courierMinFeeTry >= 0 && data.courierMinFeeTry <= 1000
+        && data.minCommissionTry is number && data.minCommissionTry >= 0 && data.minCommissionTry <= 5000
+        && data.updatedByEmail is string && data.updatedByEmail.size() >= 5 && data.updatedByEmail.size() <= 120
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidRestaurantCommissionOverride(data) {
+      return data.keys().hasAll([
+          'restaurantName', 'commissionMode', 'restaurantCommissionPct',
+          'fixedCommissionTry', 'note', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'restaurantName', 'commissionMode', 'restaurantCommissionPct',
+          'fixedCommissionTry', 'note', 'updatedAt'
+        ])
+        && data.restaurantName is string && data.restaurantName.size() >= 2 && data.restaurantName.size() <= 80
+        && data.commissionMode in ['percentage', 'fixed', 'hybrid']
+        && data.restaurantCommissionPct is number && data.restaurantCommissionPct >= 0 && data.restaurantCommissionPct <= 50
+        && data.fixedCommissionTry is number && data.fixedCommissionTry >= 0 && data.fixedCommissionTry <= 5000
+        && data.note is string && data.note.size() <= 160
         && data.updatedAt is timestamp;
     }
 
@@ -765,6 +810,53 @@ service cloud.firestore {
         && isValidId(cardId)
         && request.auth.uid == userId
         && existing().ownerId == request.auth.uid;
+    }
+
+    // Platform-wide commission and fee settings (single config doc: /platformSettings/commission)
+    match /platformSettings/{settingId} {
+      allow get: if isValidId(settingId) && settingId == 'commission';
+      allow list: if false;
+
+      allow create: if isAdmin()
+        && isValidId(settingId)
+        && settingId == 'commission'
+        && isValidCommissionConfig(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(settingId)
+        && settingId == 'commission'
+        && isValidCommissionConfig(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'commissionMode', 'restaurantCommissionPct', 'fixedCommissionTry',
+          'customerServiceFeeTry', 'courierSharePct', 'courierMinFeeTry',
+          'minCommissionTry', 'updatedByEmail', 'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    // Per-restaurant custom commission rate overrides managed by admins
+    match /restaurantCommissions/{restaurantId} {
+      allow get: if isValidId(restaurantId);
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isAdmin()
+        && isValidId(restaurantId)
+        && isValidRestaurantCommissionOverride(incoming())
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(restaurantId)
+        && isValidRestaurantCommissionOverride(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'restaurantName', 'commissionMode', 'restaurantCommissionPct',
+          'fixedCommissionTry', 'note', 'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(restaurantId);
     }
 
     // Boot-time connectivity check document (read-only ping)

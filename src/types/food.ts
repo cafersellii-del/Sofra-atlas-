@@ -270,6 +270,30 @@ export interface DispatchJobRecord {
   updatedAt?: unknown;
 }
 
+export type CommissionMode = 'percentage' | 'fixed' | 'hybrid';
+
+export interface CommissionConfig {
+  commissionMode: CommissionMode;
+  restaurantCommissionPct: number;
+  fixedCommissionTry: number;
+  customerServiceFeeTry: number;
+  courierSharePct: number;
+  courierMinFeeTry: number;
+  minCommissionTry: number;
+  updatedByEmail?: string;
+  updatedAt?: unknown;
+}
+
+export interface RestaurantCommissionOverride {
+  id: string;
+  restaurantName: string;
+  commissionMode: CommissionMode;
+  restaurantCommissionPct: number;
+  fixedCommissionTry: number;
+  note: string;
+  updatedAt?: unknown;
+}
+
 export interface Order {
   id: string;
   firestoreId?: string;
@@ -298,6 +322,10 @@ export interface Order {
   subtotalTry: number;
   discountTry: number;
   deliveryFeeTry: number;
+  serviceFeeTry?: number;
+  commissionRatePct?: number;
+  commissionTry?: number;
+  restaurantNetTry?: number;
   totalTry: number;
   status: OrderStatus;
   estimatedArrival: string;
