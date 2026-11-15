@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   serverTimestamp,
@@ -53,6 +54,7 @@ import {
   isBootstrappedSuperAdmin,
   isHardcodedNonTurkeyAdmin,
   isTurkeyCityId,
+  resolveAdminDocScope,
 } from './utils/adminScope';
 import {
   calculateOrderCommissionBreakdown,
@@ -63,6 +65,7 @@ import {
 import { refundOnlinePayment } from './utils/payment';
 import { sanitizeText, VALIDATION_BOUNDS } from './utils/validation';
 import type {
+  AdminUserRecord,
   CartItem,
   CityId,
   CommissionConfig,
@@ -341,6 +344,8 @@ export default function App() {
   const [nonTurkeyCommissionConfig, setNonTurkeyCommissionConfig] =
     useState<CommissionConfig | null>(null);
   const [adminFirestoreOrders, setAdminFirestoreOrders] = useState<Order[]>([]);
+  const [isNonTurkeyRegionalAdmin, setIsNonTurkeyRegionalAdmin] =
+    useState(false);
 
   const handleCommissionConfigUpdated = useCallback((next: CommissionConfig) => {
     const clean = sanitizeCommissionConfig(next);
@@ -402,6 +407,46 @@ export default function App() {
     return () => unsub();
   }, []);
 
+  // Detect non-Turkey regional admin (hardcoded or delegated) to apply English UI across the app
+  useEffect(() => {
+    let active = true;
+    async function checkRegionalScope() {
+      if (!authReady || !currentUser || !currentUser.emailVerified) {
+        if (active) setIsNonTurkeyRegionalAdmin(false);
+        return;
+      }
+      if (isBootstrappedSuperAdmin(currentUser)) {
+        if (active) setIsNonTurkeyRegionalAdmin(false);
+        return;
+      }
+      if (isHardcodedNonTurkeyAdmin(currentUser)) {
+        if (active) setIsNonTurkeyRegionalAdmin(true);
+        return;
+      }
+      try {
+        const snap = await getDoc(doc(db, 'admins', currentUser.uid));
+        if (active) {
+          setIsNonTurkeyRegionalAdmin(
+            snap.exists() &&
+              resolveAdminDocScope(snap.data() as AdminUserRecord) ===
+                'non_turkey'
+          );
+        }
+      } catch (error) {
+        if (active) setIsNonTurkeyRegionalAdmin(false);
+        handleFirestoreError(
+          error,
+          OperationType.GET,
+          `admins/${currentUser.uid}`
+        );
+      }
+    }
+    void checkRegionalScope();
+    return () => {
+      active = false;
+    };
+  }, [authReady, currentUser]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const baseUrl = window.location.origin + window.location.pathname;
@@ -437,10 +482,16 @@ export default function App() {
       selectedCity !== 'all'
         ? CITY_HUBS.find((h) => h.id === selectedCity)
         : undefined;
-    document.title = activeHub
-      ? `${activeHub.country} (${activeHub.name}) Restoranları — Sofra Atlas`
-      : 'Sofra Atlas — Küresel Restoran ve Online Yemek Siparişi';
-  }, [selectedCity]);
+    if (isNonTurkeyRegionalAdmin) {
+      document.title = activeHub
+        ? `${activeHub.country} (${activeHub.name}) Restaurants — Sofra Atlas`
+        : 'Sofra Atlas — Global Restaurants & Online Food Delivery';
+    } else {
+      document.title = activeHub
+        ? `${activeHub.country} (${activeHub.name}) Restoranları — Sofra Atlas`
+        : 'Sofra Atlas — Küresel Restoran ve Online Yemek Siparişi';
+    }
+  }, [selectedCity, isNonTurkeyRegionalAdmin]);
 
   // Subscribe to owner's member profile, saved tokenized cards, and persisted Firestore orders when verified
   useEffect(() => {
@@ -1902,6 +1953,7 @@ export default function App() {
         isOpen={isStaffInboxOpen}
         orders={orders}
         initialOrderId={staffInboxOrderId}
+        regionScope={isNonTurkeyRegionalAdmin ? 'non_turkey' : 'all'}
         onClose={() => setIsStaffInboxOpen(false)}
       />
 
@@ -1932,7 +1984,10 @@ export default function App() {
   );
 
   const wrappedApp = (
-    <LanguageProvider selectedCity={selectedCity}>
+    <LanguageProvider
+      selectedCity={selectedCity}
+      forcedLanguage={isNonTurkeyRegionalAdmin ? 'en' : null}
+    >
       {appContent}
     </LanguageProvider>
   );
@@ -1941,7 +1996,7 @@ export default function App() {
     return (
       <APIProvider
         apiKey={GOOGLE_MAPS_API_KEY}
-        language="tr"
+        language={isNonTurkeyRegionalAdmin ? 'en' : 'tr'}
         libraries={['places', 'marker', 'routes']}
       >
         {wrappedApp}

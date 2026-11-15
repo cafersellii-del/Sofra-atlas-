@@ -27,9 +27,9 @@ interface SupportStaffInboxProps {
   regionScope?: AdminRegionScope | null;
 }
 
-function formatMessageTime(iso: string): string {
+function formatMessageTime(iso: string, locale = 'tr-TR'): string {
   try {
-    return new Date(iso).toLocaleTimeString('tr-TR', {
+    return new Date(iso).toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -45,7 +45,9 @@ export function SupportStaffInbox({
   compactHeightClass = 'h-[480px]',
   regionScope = 'all',
 }: SupportStaffInboxProps) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const isEn = language === 'en' || regionScope === 'non_turkey';
+  const timeLocale = isEn ? 'en-US' : 'tr-TR';
   const { threads, loading, sending, sendStaffReply, markThreadReadByStaff } =
     useSupportInbox(enabled);
 
@@ -151,7 +153,11 @@ export function SupportStaffInbox({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Sipariş no, müşteri veya kurye ara..."
+              placeholder={
+                isEn
+                  ? 'Search order #, customer, or courier...'
+                  : 'Sipariş no, müşteri veya kurye ara...'
+              }
               className="w-full pl-8 pr-3 py-2 min-h-[36px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-xs"
             />
           </div>
@@ -160,11 +166,15 @@ export function SupportStaffInbox({
         <div className="flex-1 overflow-y-auto divide-y divide-[#E6E4DF]">
           {loading && filteredThreads.length === 0 ? (
             <div className="p-6 text-center text-xs text-[#575550]">
-              Aktif sipariş sohbetleri yükleniyor...
+              {isEn
+                ? 'Loading active order conversations...'
+                : 'Aktif sipariş sohbetleri yükleniyor...'}
             </div>
           ) : filteredThreads.length === 0 ? (
             <div className="p-6 text-center text-xs text-[#575550]">
-              Henüz kayıtlı sipariş sohbeti bulunmuyor.
+              {isEn
+                ? 'No order support conversations found yet.'
+                : 'Henüz kayıtlı sipariş sohbeti bulunmuyor.'}
             </div>
           ) : (
             filteredThreads.map((th) => {
@@ -191,7 +201,7 @@ export function SupportStaffInbox({
                       )}
                       {lastMsg && (
                         <span className="font-mono tabular-nums text-[10px] text-[#8A8780]">
-                          {formatMessageTime(lastMsg.createdAt)}
+                          {formatMessageTime(lastMsg.createdAt, timeLocale)}
                         </span>
                       )}
                     </div>
@@ -202,7 +212,7 @@ export function SupportStaffInbox({
                   <p className="text-[11px] text-[#575550] truncate mt-0.5">
                     {lastMsg
                       ? `${lastMsg.senderName}: ${lastMsg.text}`
-                      : `${th.restaurantName} · Kurye: ${th.courierName}`}
+                      : `${th.restaurantName} · ${isEn ? 'Courier' : 'Kurye'}: ${th.courierName}`}
                   </p>
                 </button>
               );
@@ -216,7 +226,11 @@ export function SupportStaffInbox({
         {!activeThread ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-xs text-[#575550]">
             <MessageSquare className="w-6 h-6 text-[#D9043D] mb-2" />
-            <p>Yanıtlamak için soldan bir sipariş seçin.</p>
+            <p>
+              {isEn
+                ? 'Select an order from the left to reply.'
+                : 'Yanıtlamak için soldan bir sipariş seçin.'}
+            </p>
           </div>
         ) : (
           <>
@@ -226,7 +240,8 @@ export function SupportStaffInbox({
                   #{activeThread.orderId} · {activeThread.customerName}
                 </p>
                 <p className="text-[11px] text-[#575550] truncate">
-                  {activeThread.restaurantName} · Kurye: {activeThread.courierName}
+                  {activeThread.restaurantName} · {isEn ? 'Courier' : 'Kurye'}:{' '}
+                  {activeThread.courierName}
                 </p>
               </div>
 
@@ -262,7 +277,9 @@ export function SupportStaffInbox({
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5 bg-[#FAF9F7]">
               {channelMessages.length === 0 ? (
                 <div className="py-10 text-center text-xs text-[#575550]">
-                  Bu kanalda ({replyRole === 'restaurant' ? 'Restoran' : 'Kurye'}) henüz mesaj yok. Müşteriye bilgi gönderebilirsiniz.
+                  {isEn
+                    ? `No messages in the ${replyRole === 'restaurant' ? 'Restaurant' : 'Courier'} channel yet. You can send an update to the customer.`
+                    : `Bu kanalda (${replyRole === 'restaurant' ? 'Restoran' : 'Kurye'}) henüz mesaj yok. Müşteriye bilgi gönderebilirsiniz.`}
                 </div>
               ) : (
                 channelMessages.map((msg) => {
@@ -279,7 +296,7 @@ export function SupportStaffInbox({
                           {msg.senderName}
                         </span>
                         <span className="font-mono tabular-nums text-[10px] text-[#8A8780]">
-                          {formatMessageTime(msg.createdAt)}
+                          {formatMessageTime(msg.createdAt, timeLocale)}
                         </span>
                       </div>
                       <div
@@ -307,9 +324,15 @@ export function SupportStaffInbox({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder={
-                  replyRole === 'restaurant'
-                    ? `${activeThread.restaurantName} olarak yanıt yazın...`
-                    : `${activeThread.courierName} olarak yanıt yazın...`
+                  isEn
+                    ? `Reply as ${
+                        replyRole === 'restaurant'
+                          ? activeThread.restaurantName
+                          : activeThread.courierName
+                      }...`
+                    : replyRole === 'restaurant'
+                      ? `${activeThread.restaurantName} olarak yanıt yazın...`
+                      : `${activeThread.courierName} olarak yanıt yazın...`
                 }
                 maxLength={500}
                 className="flex-1 px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] text-xs"
@@ -334,6 +357,7 @@ interface SupportStaffInboxModalProps {
   isOpen: boolean;
   orders: Order[];
   initialOrderId?: string | null;
+  regionScope?: AdminRegionScope | null;
   onClose: () => void;
 }
 
@@ -341,9 +365,11 @@ export function SupportStaffInboxModal({
   isOpen,
   orders,
   initialOrderId = null,
+  regionScope = 'all',
   onClose,
 }: SupportStaffInboxModalProps) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const isEn = language === 'en' || regionScope === 'non_turkey';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -377,13 +403,19 @@ export function SupportStaffInboxModal({
               {t.staffInboxTitle}
             </h2>
             <p className="text-xs text-[#575550]">
-              Müşterilerden gelen sipariş mesajlarını restoran veya kurye olarak anlık yanıtlayın
+              {isEn
+                ? 'Reply to customer order messages in real time as restaurant or courier staff'
+                : 'Müşterilerden gelen sipariş mesajlarını restoran veya kurye olarak anlık yanıtlayın'}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Restoran ve kurye canlı destek masasını kapat"
+            aria-label={
+              isEn
+                ? 'Close restaurant and courier live support desk'
+                : 'Restoran ve kurye canlı destek masasını kapat'
+            }
             className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -394,6 +426,7 @@ export function SupportStaffInboxModal({
             orders={orders}
             enabled={isOpen}
             initialOrderId={initialOrderId}
+            regionScope={regionScope}
             compactHeightClass="h-[68vh] max-h-[560px]"
           />
         </div>

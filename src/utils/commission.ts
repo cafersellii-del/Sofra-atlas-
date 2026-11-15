@@ -190,8 +190,20 @@ export function formatCommissionPolicySummary(
   config: Pick<
     CommissionConfig,
     'commissionMode' | 'restaurantCommissionPct' | 'fixedCommissionTry'
-  >
+  >,
+  lang: 'tr' | 'en' = 'tr'
 ): string {
+  if (lang === 'en') {
+    if (config.commissionMode === 'percentage') {
+      return `${config.restaurantCommissionPct}% commission`;
+    }
+    if (config.commissionMode === 'fixed') {
+      return `${Math.round(config.fixedCommissionTry).toLocaleString('en-US')} ₺ flat fee`;
+    }
+    return `${config.restaurantCommissionPct}% + ${Math.round(
+      config.fixedCommissionTry
+    ).toLocaleString('en-US')} ₺`;
+  }
   if (config.commissionMode === 'percentage') {
     return `%${config.restaurantCommissionPct} komisyon`;
   }

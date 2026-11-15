@@ -59,7 +59,19 @@ export function canAccessCityInScope(
   return isNonTurkeyCityId(cityId);
 }
 
-export function getAdminScopeLabel(scope: AdminRegionScope | null): string {
+export function getAdminScopeLabel(
+  scope: AdminRegionScope | null,
+  lang: 'tr' | 'en' = 'tr'
+): string {
+  if (lang === 'en') {
+    if (scope === 'non_turkey') {
+      return 'Regional Admin · All Non-Turkey Regions (196 Countries)';
+    }
+    if (scope === 'all') {
+      return 'Full Access · Turkey + Global (197 Countries)';
+    }
+    return 'Unauthorized';
+  }
   if (scope === 'non_turkey') {
     return 'Bölge Yetkilisi · Türkiye Harici Tüm Bölgeler (196 Ülke)';
   }

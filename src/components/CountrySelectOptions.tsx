@@ -10,18 +10,23 @@ interface CountrySelectOptionsProps {
   includeAllOption?: boolean;
   allLabel?: string;
   excludeTurkey?: boolean;
+  lang?: 'tr' | 'en';
 }
 
 export function CountrySelectOptions({
   includeAllOption = false,
   allLabel,
   excludeTurkey = false,
+  lang = 'tr',
 }: CountrySelectOptionsProps) {
   const totalCount = excludeTurkey
     ? ALL_COUNTRY_HUBS.length - 1
     : ALL_COUNTRY_HUBS.length;
   const resolvedAllLabel =
-    allLabel ?? `Tüm Dünya (${totalCount} Ülke & Bölge)`;
+    allLabel ??
+    (lang === 'en'
+      ? `All Regions (${totalCount} Countries)`
+      : `Tüm Dünya (${totalCount} Ülke & Bölge)`);
 
   return (
     <>

@@ -42,9 +42,11 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 
 export function LanguageProvider({
   selectedCity,
+  forcedLanguage = null,
   children,
 }: {
   selectedCity: CityId;
+  forcedLanguage?: AppLanguage | null;
   children: ReactNode;
 }) {
   const [autoByCountry, setAutoByCountryState] = useState<boolean>(() => {
@@ -79,11 +81,14 @@ export function LanguageProvider({
   }, [selectedCity]);
 
   const language: AppLanguage = useMemo(() => {
+    if (forcedLanguage) {
+      return forcedLanguage;
+    }
     if (autoByCountry && countryLanguage) {
       return countryLanguage;
     }
     return manualLanguage;
-  }, [autoByCountry, countryLanguage, manualLanguage]);
+  }, [forcedLanguage, autoByCountry, countryLanguage, manualLanguage]);
 
   const setAutoByCountry = useCallback((enabled: boolean) => {
     setAutoByCountryState(enabled);
