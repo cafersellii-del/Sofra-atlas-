@@ -236,7 +236,6 @@ export interface UITranslations {
   craftTitle: string;
   craftExtensionBtn: string;
   craftPartnerBtn: string;
-  craftCourierBtn: string;
   step1Badge: string;
   step1Title: string;
   step2Badge: string;
@@ -263,7 +262,6 @@ export interface UITranslations {
   footerStandardsLink: string;
   footerOrdersLink: string;
   footerExtensionLink: string;
-  footerCourierLink: string;
   liveSupportBtn: string;
   liveSupportTitle: string;
   liveSupportSubtitle: string;
@@ -282,7 +280,7 @@ const tr: UITranslations = {
   navRestaurants: 'Restoranlar',
   navMap: 'Harita',
   navOrders: 'Siparişlerim',
-  navRestaurantPortal: 'Restoran & Kurye Ortağı',
+  navRestaurantPortal: 'Restoran İş Ortağı',
   navAdmin: 'Yönetici Paneli',
   memberLogin: 'Üye Girişi',
   myAccount: 'Hesabım',
@@ -306,14 +304,14 @@ const tr: UITranslations = {
   allWorldSummary: 'Tüm Dünya',
   pickOnMap: 'Haritada Seç',
   featuredHubsLabel: 'Öne çıkan küresel gastronomi merkezlerine hızlı geçiş',
-  heroCardBadge: 'Tek Restorandan Hızlı Teslimat · Canlı Kurye Takibi',
+  heroCardBadge: 'Restoran Kuryesi ile Hızlı Teslimat · Canlı Takip',
   heroCardTitle: 'Minimum sepet avantajı ve ATLAS15 ile ilk siparişte %15 indirim.',
   proofCountriesTitle: '196 Ülke · 81 İl',
   proofCountriesDesc: '6 kıtada tüm ülkeler, şehirler ve ilçe bazlı teslimat ağı',
   proofCartTitle: 'Tek Sepet Modeli',
   proofCartDesc: 'Her restoranın kendi menüsü, min. sepet tutarı ve teslimat ücreti',
   proofTimeTitle: '19–30 dk',
-  proofTimeDesc: 'Canlı Google Maps rotalı sıcak kurye teslimatı',
+  proofTimeDesc: 'Restoran kuryesi ile canlı Google Maps rotalı sıcak teslimat',
   proofPromoDesc: 'Kampanyalı restoranlarda sepette anında %15 indirim',
   marketEyebrow: 'Restoran Pazaryeri',
   marketTitle: 'Şehrinizdeki açık restoranları ve menüleri keşfedin',
@@ -351,19 +349,18 @@ const tr: UITranslations = {
   craftTitle: 'Restoran masası kalitesini şehirler arası standartla koruyoruz.',
   craftExtensionBtn: 'Web Sitesi Uzantısı',
   craftPartnerBtn: 'Restoran İş Ortağı Ol',
-  craftCourierBtn: 'Kurye Sipariş Kabulü',
   step1Badge: 'Adım 1/4 · Onaylandı',
   step1Title: 'Siparişiniz Alındı',
   step2Badge: 'Adım 2/4 · Mutfakta',
   step2Title: 'Şef Mutfağında Hazırlanıyor',
   step3Badge: 'Adım 3/4 · Canlı Konum Aktif',
-  step3Title: 'Kurye Yola Çıktı!',
+  step3Title: 'Restoran Kuryesi Yola Çıktı!',
   step4Badge: 'Adım 4/4 · Tamamlandı',
   step4Title: 'Siparişiniz Teslim Edildi',
   trackLiveBtn: 'Canlı Haritada Takip Et',
   statusReceived: 'Sipariş Alındı',
   statusPreparing: 'Mutfakta Hazırlanıyor',
-  statusOnTheWay: 'Kurye Yola Çıktı',
+  statusOnTheWay: 'Restoran Kuryesi Yolda',
   statusDelivered: 'Teslim Edildi',
   installHeader: 'Uygulamayı İndir',
   installFooter: 'Uygulamayı İndir (App)',
@@ -378,12 +375,11 @@ const tr: UITranslations = {
   footerStandardsLink: 'Teslimat Standardı',
   footerOrdersLink: 'Sipariş Takibi',
   footerExtensionLink: 'Web Sitesi Uzantısı',
-  footerCourierLink: 'Kurye İş Ortağı & Sipariş Kabulü',
   liveSupportBtn: 'Canlı Destek',
   liveSupportTitle: 'Sipariş Canlı Destek',
-  liveSupportSubtitle: 'Restoran mutfağı veya teslimat kuryesi ile anlık yazışın',
+  liveSupportSubtitle: 'Restoran mutfağı veya restoran kuryesi ile anlık yazışın',
   chatWithRestaurant: 'Restoran ile Sohbet',
-  chatWithCourier: 'Kurye ile Sohbet',
+  chatWithCourier: 'Restoran Kuryesi ile Sohbet',
   staffInboxBtn: 'Restoran / Kurye Masası',
   staffInboxTitle: 'Restoran & Kurye Canlı Destek Masası',
   chatPlaceholder: 'Mesajınızı yazın...',
@@ -421,14 +417,14 @@ const en: UITranslations = {
   allWorldSummary: 'Worldwide',
   pickOnMap: 'Pick on Map',
   featuredHubsLabel: 'Quick jump to featured global culinary hubs',
-  heroCardBadge: 'Single-Kitchen Express Delivery · Live Courier Tracking',
+  heroCardBadge: 'Restaurant Courier Express Delivery · Live Tracking',
   heroCardTitle: 'Transparent minimum baskets & 15% off first order with ATLAS15.',
   proofCountriesTitle: '196 Countries',
   proofCountriesDesc: 'Nationwide & international delivery coverage across 6 continents',
   proofCartTitle: 'Single-Cart Model',
   proofCartDesc: 'Dedicated kitchen menus, clear min. basket & transparent fees',
   proofTimeTitle: '19–30 min',
-  proofTimeDesc: 'Hot courier delivery routed live via Google Maps',
+  proofTimeDesc: 'Hot restaurant courier delivery routed live via Google Maps',
   proofPromoDesc: 'Instant 15% basket discount at participating restaurants',
   marketEyebrow: 'Restaurant Marketplace',
   marketTitle: 'Explore open restaurants and menus in your area',
@@ -466,13 +462,12 @@ const en: UITranslations = {
   craftTitle: 'Preserving dine-in kitchen quality across every city delivery.',
   craftExtensionBtn: 'Website Extension',
   craftPartnerBtn: 'Join as Partner Restaurant',
-  craftCourierBtn: 'Courier Order Dispatch',
   step1Badge: 'Step 1/4 · Confirmed',
   step1Title: 'Order Received',
   step2Badge: 'Step 2/4 · Cooking',
   step2Title: 'Preparing in Kitchen',
   step3Badge: 'Step 3/4 · Live GPS Active',
-  step3Title: 'Courier Is On the Way!',
+  step3Title: 'Restaurant Courier On the Way!',
   step4Badge: 'Step 4/4 · Completed',
   step4Title: 'Order Delivered',
   trackLiveBtn: 'Track Live on Map',
@@ -493,7 +488,6 @@ const en: UITranslations = {
   footerStandardsLink: 'Delivery Standards',
   footerOrdersLink: 'Order Tracking',
   footerExtensionLink: 'Website Extension',
-  footerCourierLink: 'Courier Partner & Dispatch',
   liveSupportBtn: 'Live Support',
   liveSupportTitle: 'Order Live Support',
   liveSupportSubtitle: 'Message the restaurant kitchen or delivery courier in real time',

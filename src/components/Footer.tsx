@@ -10,7 +10,6 @@ interface FooterProps {
   onOpenOrders: () => void;
   onOpenMemberModal: () => void;
   onOpenRestaurantPortal: () => void;
-  onOpenCourierPortal: () => void;
   onOpenExtensionStudio: () => void;
   onOpenAdminPanel: () => void;
 }
@@ -21,7 +20,6 @@ export function Footer({
   onOpenOrders,
   onOpenMemberModal,
   onOpenRestaurantPortal,
-  onOpenCourierPortal,
   onOpenExtensionStudio,
   onOpenAdminPanel,
 }: FooterProps) {
@@ -119,15 +117,6 @@ export function Footer({
                   className="text-[#D9043D] font-medium hover:underline underline-offset-4 cursor-pointer"
                 >
                   {t.navRestaurantPortal}
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={onOpenCourierPortal}
-                  className="text-[#D9043D] font-medium hover:underline underline-offset-4 cursor-pointer"
-                >
-                  {t.footerCourierLink}
                 </button>
               </li>
               <li>

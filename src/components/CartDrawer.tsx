@@ -462,8 +462,10 @@ export function CartDrawer({
       status: 'received',
       estimatedArrival: activeHub.avgDelivery,
       courierId: '',
-      courierStatus: 'waiting_courier',
-      courierName: 'Kurye Bekleniyor',
+      courierStatus: 'accepted',
+      courierName: activeRestaurantName
+        ? `${activeRestaurantName} Kuryesi`
+        : 'Restoran Kuryesi',
     };
 
     setFormError('');
@@ -839,12 +841,12 @@ export function CartDrawer({
                 ) : deliveryFeeTry === 0 ? (
                   <p className="text-xs font-medium text-[#141413]">
                     {activeRestaurantName} teslimatında{' '}
-                    <span className="text-[#D9043D]">ücretsiz kurye</span>{' '}
+                    <span className="text-[#D9043D]">ücretsiz restoran kuryesi</span>{' '}
                     geçerli.
                   </p>
                 ) : (
                   <p className="text-xs text-[#141413]">
-                    Ücretsiz kurye için{' '}
+                    Ücretsiz restoran kuryesi için{' '}
                     <strong className="font-mono tabular-nums">
                       {formatPrice(
                         freeDeliveryRemainingTry,
@@ -1700,8 +1702,8 @@ export function CartDrawer({
                 {/* Method 3: Cash on Delivery */}
                 {paymentMethod === 'cash_on_delivery' && (
                   <div className="p-3.5 rounded-xl border border-[#E6E4DF] bg-[#FAF9F7] text-xs text-[#575550]">
-                    Siparişiniz teslim edilirken kuryeye nakit veya mobil POS
-                    cihazı üzerinden ödeme yapabilirsiniz.
+                    Siparişiniz restoran kuryesiyle teslim edilirken nakit veya
+                    mobil POS cihazı üzerinden ödeme yapabilirsiniz.
                   </div>
                 )}
               </div>

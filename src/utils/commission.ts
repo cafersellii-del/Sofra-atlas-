@@ -19,8 +19,8 @@ export const DEFAULT_COMMISSION_CONFIG: CommissionConfig = {
   restaurantCommissionPct: 15,
   fixedCommissionTry: 0,
   customerServiceFeeTry: 0,
-  courierSharePct: 12,
-  courierMinFeeTry: 55,
+  courierSharePct: 0,
+  courierMinFeeTry: 0,
   minCommissionTry: 0,
 };
 
@@ -169,15 +169,7 @@ export function calculateOrderCommissionBreakdown(params: {
 
   const commissionTry = Math.min(safeNet, Math.max(0, rawCommission));
   const restaurantNetTry = Math.max(0, safeNet - commissionTry);
-  const customerTotalTry = safeNet + safeDelivery + serviceFeeTry;
-
-  const courierEarningsTry =
-    safeDelivery > 0
-      ? Math.max(Math.round(config.courierMinFeeTry), Math.round(safeDelivery))
-      : Math.max(
-          Math.round(config.courierMinFeeTry),
-          Math.round(customerTotalTry * (config.courierSharePct / 100))
-        );
+  const courierEarningsTry = 0;
 
   return {
     effectiveMode,

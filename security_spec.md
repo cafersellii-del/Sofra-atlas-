@@ -10,6 +10,7 @@
 7. Customer orders (`/orders/{orderId}`) require verified sign-in (`ownerId == request.auth.uid`), strict bounded schema keys, and immutable `ownerId`/`orderNumber`/`createdAt`. Customers can only advance `status` while non-delivered; refunds (`paymentStatus`, `refundId`) are restricted to verified admins.
 8. Saved payment cards (`/users/{userId}/savedCards/{cardId}`) store strictly tokenized metadata (`last4`, `brand`, `expiry`, `label`)—never raw PAN or CVV—and are readable/writable exclusively by `request.auth.uid == userId`.
 9. Platform commission configuration (`/platformSettings/commission`) and per-restaurant commission overrides (`/restaurantCommissions/{restaurantId}`) contain zero PII, are strictly bounded (`restaurantCommissionPct` 0–50, `fixedCommissionTry` 0–5000, `customerServiceFeeTry` 0–1000, `courierSharePct` 0–50, `courierMinFeeTry` 0–1000, `minCommissionTry` 0–5000), require `updatedAt == request.time`, and are writable exclusively by verified admins (`isAdmin()`).
+10. Standalone platform courier service (`/couriers` and `/dispatchJobs` writes) is closed; all deliveries are fulfilled directly by each restaurant's own courier.
 
 ## 2. Dirty Dozen Adversarial Payloads
 1. Unauthenticated create on `/restaurants/r1` -> PERMISSION_DENIED

@@ -773,7 +773,13 @@ export function OrdersPanel({
                     </div>
                     <div className="flex items-center gap-2">
                       <Truck className="w-3.5 h-3.5 text-[#D9043D] shrink-0" />
-                      <span>Kurye: {order.courierName}</span>
+                      <span>
+                        Restoran Kuryesi:{' '}
+                        {!order.courierName ||
+                        order.courierName === 'Kurye Bekleniyor'
+                          ? `${order.items[0]?.restaurantName || 'Restoran'} Kuryesi`
+                          : order.courierName}
+                      </span>
                     </div>
                     <div className="col-span-2 flex items-start gap-2">
                       <MapPin className="w-3.5 h-3.5 text-[#D9043D] shrink-0 mt-0.5" />
@@ -823,7 +829,7 @@ export function OrdersPanel({
                               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 min-h-[32px] rounded-lg border border-[#D9043D]/30 bg-white text-[11px] font-semibold text-[#D9043D] hover:bg-[#D9043D] hover:text-white transition-colors cursor-pointer"
                             >
                               <Bike className="w-3.5 h-3.5" />
-                              <span>Kuryeye Yaz</span>
+                              <span>Restoran Kuryesine Yaz</span>
                             </button>
                           </div>
                         )}

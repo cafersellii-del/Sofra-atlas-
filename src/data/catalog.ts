@@ -362,7 +362,7 @@ export const INITIAL_ORDERS: Order[] = [
     totalTry: 885,
     status: 'delivered',
     estimatedArrival: 'Teslim edildi (24 dk)',
-    courierName: 'Emre K.',
+    courierName: 'Ocakbaşı Karaköy Kuryesi',
   },
 ];
 

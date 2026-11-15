@@ -66,7 +66,6 @@ import {
   normalizeRestaurantCommissionKey,
 } from '../utils/commission';
 import { CountrySelectOptions } from './CountrySelectOptions';
-import { CourierWorkspace } from './CourierWorkspace';
 import { SupportStaffInbox } from './SupportStaffInbox';
 import {
   parseIngredients,
@@ -78,19 +77,10 @@ import { DishImage } from './DishImage';
 interface RestaurantPortalModalProps {
   isOpen: boolean;
   orders?: Order[];
-  initialRole?: 'restaurant' | 'courier';
   commissionConfig?: CommissionConfig;
   onClose: () => void;
   onOpenExtensionStudio: () => void;
   onAdvanceOrderStatus?: (orderId: string) => void;
-  onAcceptOrderCourier?: (
-    orderId: string,
-    courierId: string,
-    courierName: string
-  ) => void;
-  onPickupOrderCourier?: (orderId: string) => void;
-  onDeliverOrderCourier?: (orderId: string) => void;
-  onOpenCourierChat?: (order: Order) => void;
 }
 
 const PARTNER_CATEGORIES = CUISINE_CATEGORIES.filter(
@@ -100,24 +90,16 @@ const PARTNER_CATEGORIES = CUISINE_CATEGORIES.filter(
 export function RestaurantPortalModal({
   isOpen,
   orders = [],
-  initialRole = 'restaurant',
   commissionConfig = DEFAULT_COMMISSION_CONFIG,
   onClose,
   onOpenExtensionStudio,
   onAdvanceOrderStatus,
-  onAcceptOrderCourier,
-  onPickupOrderCourier,
-  onDeliverOrderCourier,
-  onOpenCourierChat,
 }: RestaurantPortalModalProps) {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  const [partnerRole, setPartnerRole] = useState<'restaurant' | 'courier'>(
-    initialRole
-  );
   const [orderScope, setOrderScope] = useState<'mine' | 'all'>('mine');
 
   const [restaurant, setRestaurant] = useState<RestaurantProfile | null>(null);
@@ -178,11 +160,6 @@ export function RestaurantPortalModal({
     });
     return () => unsub();
   }, []);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setPartnerRole(initialRole);
-  }, [isOpen, initialRole]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -672,13 +649,6 @@ export function RestaurantPortalModal({
     }
   };
 
-  const pendingCourierCount = orders.filter(
-    (o) =>
-      o.status !== 'delivered' &&
-      !o.courierId &&
-      (!o.courierStatus || o.courierStatus === 'waiting_courier')
-  ).length;
-
   const restaurantMatchedOrders = restaurant
     ? orders.filter((o) =>
         o.items.some(
@@ -706,25 +676,21 @@ export function RestaurantPortalModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Modal Header */}
-        <div className="sticky top-0 z-20 bg-white border-b border-[#E6E4DF] px-6 py-4 space-y-3">
+        <div className="sticky top-0 z-20 bg-white border-b border-[#E6E4DF] px-6 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              {partnerRole === 'courier' ? (
-                <Bike className="w-5 h-5 text-[#D9043D] shrink-0" />
-              ) : (
-                <Store className="w-5 h-5 text-[#D9043D] shrink-0" />
-              )}
+              <Store className="w-5 h-5 text-[#D9043D] shrink-0" />
               <div className="min-w-0">
                 <h2
                   id="restaurant-portal-title"
                   className="font-display text-lg font-semibold text-[#141413] truncate"
                 >
-                  Restoran & Kurye İş Ortağı Portalı
+                  Restoran İş Ortağı Portalı
                 </h2>
                 <p className="text-xs text-[#575550] truncate">
                   {user
-                    ? `${user.displayName ?? user.email} oturumu açık`
-                    : 'Restoran mutfağınızı yönetin veya kurye olarak anlık sipariş kabul edin'}
+                    ? `${user.displayName ?? user.email} · Teslimatlar yalnızca restoran kuryesi ile yapılır`
+                    : 'Restoran mutfağınızı, menünüzü ve kendi restoran kuryesi teslimatlarınızı yönetin'}
                 </p>
               </div>
             </div>
@@ -743,93 +709,18 @@ export function RestaurantPortalModal({
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="İş ortağı panelini kapat"
+                aria-label="Restoran portalını kapat"
                 className="w-9 h-9 rounded-lg border border-[#E6E4DF] flex items-center justify-center text-[#141413] hover:bg-[#FAF9F7] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
-
-          {/* Partner Role Switcher */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div
-              role="tablist"
-              aria-label="İş ortağı rolü"
-              className="inline-flex items-center gap-1 p-1 bg-[#EFECE6] rounded-lg"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={partnerRole === 'restaurant'}
-                onClick={() => {
-                  setPartnerRole('restaurant');
-                  setFormError('');
-                  setFeedbackMessage('');
-                }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                  partnerRole === 'restaurant'
-                    ? 'bg-white text-[#141413] shadow-xs'
-                    : 'text-[#575550] hover:text-[#141413]'
-                }`}
-              >
-                <Store className="w-3.5 h-3.5 text-[#D9043D]" />
-                <span>Restoran İş Ortağı</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={partnerRole === 'courier'}
-                onClick={() => {
-                  setPartnerRole('courier');
-                  setFormError('');
-                  setFeedbackMessage('');
-                }}
-                className={`inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[36px] text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                  partnerRole === 'courier'
-                    ? 'bg-white text-[#141413] shadow-xs'
-                    : 'text-[#575550] hover:text-[#141413]'
-                }`}
-              >
-                <Bike className="w-3.5 h-3.5 text-[#D9043D]" />
-                <span>Kurye İş Ortağı & Sipariş Kabulü</span>
-                {pendingCourierCount > 0 && (
-                  <span className="font-mono tabular-nums text-[11px] font-semibold text-[#D9043D]">
-                    ({pendingCourierCount})
-                  </span>
-                )}
-              </button>
-            </div>
-
-            <span className="text-[11px] text-[#575550] hidden sm:inline">
-              {partnerRole === 'courier'
-                ? 'Açık sipariş kuyruğu · Kabul / Teslimat Akışı'
-                : 'Menü yönetimi · Gelen mutfak siparişleri'}
-            </span>
-          </div>
         </div>
 
         {/* Body */}
         <div className="p-6 sm:p-8 space-y-6">
-          {partnerRole === 'courier' ? (
-            <CourierWorkspace
-              isOpen={isOpen && partnerRole === 'courier'}
-              user={user}
-              authReady={authReady}
-              orders={orders}
-              commissionConfig={commissionConfig}
-              onAcceptOrderLocal={(orderId, courierId, courierName) =>
-                onAcceptOrderCourier?.(orderId, courierId, courierName)
-              }
-              onPickupOrderLocal={(orderId) =>
-                onPickupOrderCourier?.(orderId)
-              }
-              onDeliverOrderLocal={(orderId) =>
-                onDeliverOrderCourier?.(orderId)
-              }
-              onOpenCourierChat={onOpenCourierChat}
-            />
-          ) : !authReady || dataLoading ? (
+          {!authReady || dataLoading ? (
             <div className="py-12 text-center text-sm text-[#575550]">
               Restoran hesap bilgileri yükleniyor...
             </div>
@@ -1170,7 +1061,7 @@ export function RestaurantPortalModal({
                     {formatCommissionPolicySummary(
                       restaurantOverride ?? commissionConfig
                     )}{' '}
-                    {restaurantOverride ? '(Özel Anlaşma)' : '(Platform Standardı)'}
+                    {restaurantOverride ? '(Özel Anlaşma)' : '(Platform Standardı)'} · Teslimat: Restoran Kuryesi
                   </p>
                 </div>
 
@@ -1575,10 +1466,10 @@ export function RestaurantPortalModal({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h4 className="font-display text-base font-semibold text-[#141413]">
-                        Mutfak Sipariş Onay & Kurye Durumu
+                        Mutfak Sipariş Onay & Restoran Kuryesi Teslimatı
                       </h4>
                       <p className="text-xs text-[#575550]">
-                        Yeni siparişleri mutfakta hazırlamaya alın; kurye kabul durumunu anlık izleyin.
+                        Siparişleri mutfakta hazırlayın; hazır olduğunda kendi restoran kuryenizle yola çıkarın ve teslimatı tamamlayın.
                       </p>
                     </div>
                     {restaurantMatchedOrders.length > 0 && (
@@ -1728,8 +1619,12 @@ export function RestaurantPortalModal({
                                 <p className="text-xs text-[#575550] flex items-center gap-1.5">
                                   <Clock className="w-3.5 h-3.5 text-[#D9043D]" />
                                   <span>
-                                    Kurye: {order.courierName || 'Kurye Bekleniyor'} ·{' '}
-                                    {order.estimatedArrival}
+                                    Restoran Kuryesi:{' '}
+                                    {!order.courierName ||
+                                    order.courierName === 'Kurye Bekleniyor'
+                                      ? `${restaurant?.name || order.items[0]?.restaurantName || 'Restoran'} Kuryesi`
+                                      : order.courierName}{' '}
+                                    · {order.estimatedArrival}
                                   </span>
                                 </p>
                               </div>
@@ -1746,14 +1641,29 @@ export function RestaurantPortalModal({
                                     </strong>
                                   </span>
                                 </div>
-                                {order.status === 'received' && onAdvanceOrderStatus && (
+                                {order.status !== 'delivered' &&
+                                onAdvanceOrderStatus ? (
                                   <button
                                     type="button"
                                     onClick={() => onAdvanceOrderStatus(order.id)}
-                                    className="px-3.5 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] transition-colors cursor-pointer whitespace-nowrap"
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-2 min-h-[38px] rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] transition-colors cursor-pointer whitespace-nowrap"
                                   >
-                                    Mutfağa Al / Hazırla
+                                    {order.status === 'preparing' && (
+                                      <Bike className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>
+                                      {order.status === 'received'
+                                        ? 'Mutfağa Al / Hazırla'
+                                        : order.status === 'preparing'
+                                          ? 'Restoran Kuryesine Ver'
+                                          : 'Teslim Edildi İşaretle'}
+                                    </span>
                                   </button>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-xs font-medium text-[#16A34A]">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Teslim Edildi</span>
+                                  </span>
                                 )}
                               </div>
                             </div>

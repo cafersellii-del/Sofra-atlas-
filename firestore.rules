@@ -37,11 +37,6 @@ service cloud.firestore {
       );
     }
 
-    function isRegisteredCourier() {
-      return isVerifiedUser() &&
-        exists(/databases/$(database)/documents/couriers/$(request.auth.uid));
-    }
-
     function isValidCityId(cityId) {
       return cityId is string
         && cityId.size() >= 2
@@ -170,7 +165,6 @@ service cloud.firestore {
         && data.ownerId is string && isValidId(data.ownerId)
         && (
           data.ownerId == request.auth.uid ||
-          (('courierId' in data) && data.courierId == request.auth.uid) ||
           isAdmin()
         )
         && data.orderNumber is string && data.orderNumber.size() >= 4 && data.orderNumber.size() <= 32
@@ -526,13 +520,10 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow get: if isVerifiedUser() && isValidId(orderId) && (
         existing().ownerId == request.auth.uid ||
-        existing().courierId == request.auth.uid ||
-        (existing().courierStatus == 'waiting_courier' && isRegisteredCourier()) ||
         isAdmin()
       );
       allow list: if isVerifiedUser() && (
         resource.data.ownerId == request.auth.uid ||
-        resource.data.courierId == request.auth.uid ||
         isBootstrappedAdmin()
       );
 
@@ -541,7 +532,7 @@ service cloud.firestore {
         && isValidCustomerOrder(incoming())
         && incoming().ownerId == request.auth.uid
         && (!('courierId' in incoming()) || incoming().courierId == '')
-        && (!('courierStatus' in incoming()) || incoming().courierStatus == 'waiting_courier')
+        && (!('courierStatus' in incoming()) || incoming().courierStatus in ['accepted', 'waiting_courier'])
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time;
 
@@ -564,175 +555,31 @@ service cloud.firestore {
             existing().ownerId == request.auth.uid &&
             existing().status != 'delivered' &&
             incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
-          ) ||
-          (
-            existing().status != 'delivered' &&
-            isRegisteredCourier() &&
-            (
-              (
-                (!('courierId' in existing()) || existing().courierId == '') &&
-                incoming().courierId == request.auth.uid &&
-                incoming().courierStatus == 'accepted' &&
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'courierId', 'courierName', 'courierStatus', 'status', 'updatedAt'
-                ])
-              ) ||
-              (
-                existing().courierId == request.auth.uid &&
-                incoming().courierId == request.auth.uid &&
-                incoming().courierStatus in ['picked_up', 'delivered'] &&
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'courierStatus', 'status', 'updatedAt'
-                ])
-              )
-            )
           )
         );
 
       allow delete: if isAdmin() && isValidId(orderId);
     }
 
+    // Platform courier onboarding is disabled; deliveries are handled by restaurant couriers
     match /couriers/{courierId} {
-      allow get: if isVerifiedUser() && isValidId(courierId) && (
-        courierId == request.auth.uid || isAdmin()
-      );
-      allow list: if isBootstrappedAdmin() || (
-        isVerifiedUser() && resource.data.ownerId == request.auth.uid
-      );
-
-      allow create: if isVerifiedUser()
-        && isValidId(courierId)
-        && courierId == request.auth.uid
-        && isValidCourierProfile(incoming())
-        && incoming().completedDeliveries == 0
-        && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
-
-      allow update: if isVerifiedUser()
-        && isValidId(courierId)
-        && isValidCourierProfile(incoming())
-        && incoming().ownerId == existing().ownerId
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt == request.time
-        && (
-          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
-            'fullName', 'cityId', 'cityName', 'district', 'vehicleType',
-            'plateOrBagCode', 'availability', 'completedDeliveries', 'updatedAt'
-          ])) ||
-          (
-            courierId == request.auth.uid &&
-            existing().ownerId == request.auth.uid &&
-            (
-              incoming().diff(existing()).affectedKeys().hasOnly(['availability', 'updatedAt']) ||
-              incoming().diff(existing()).affectedKeys().hasOnly([
-                'availability', 'completedDeliveries', 'updatedAt'
-              ]) ||
-              incoming().diff(existing()).affectedKeys().hasOnly([
-                'fullName', 'cityId', 'cityName', 'district', 'vehicleType',
-                'plateOrBagCode', 'availability', 'updatedAt'
-              ])
-            )
-          )
-        );
-
+      allow get: if isVerifiedUser() && isValidId(courierId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if false;
       allow delete: if isAdmin() && isValidId(courierId);
 
       match /private/{docId} {
-        allow get: if isVerifiedUser()
-          && isValidId(courierId)
-          && isValidId(docId)
-          && docId == 'contact'
-          && (
-            (request.auth.uid == courierId && (resource == null || existing().ownerId == request.auth.uid)) ||
-            isAdmin()
-          );
-        allow list: if false;
-
-        allow create: if isVerifiedUser()
-          && isValidId(courierId)
-          && isValidId(docId)
-          && docId == 'contact'
-          && request.auth.uid == courierId
-          && existsAfter(/databases/$(database)/documents/couriers/$(courierId))
-          && isValidCourierPrivateContact(incoming())
-          && incoming().updatedAt == request.time;
-
-        allow update: if isVerifiedUser()
-          && isValidId(courierId)
-          && isValidId(docId)
-          && docId == 'contact'
-          && request.auth.uid == courierId
-          && existing().ownerId == request.auth.uid
-          && isValidCourierPrivateContact(incoming())
-          && incoming().ownerId == existing().ownerId
-          && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly([
-            'contactEmail', 'contactPhone', 'licenseOrTaxId', 'updatedAt'
-          ]);
-
+        allow get: if isVerifiedUser() && isValidId(courierId) && isValidId(docId) && docId == 'contact' && isAdmin();
+        allow list, create, update: if false;
         allow delete: if isAdmin() && isValidId(courierId) && isValidId(docId);
       }
     }
 
+    // Platform courier dispatch queue is disabled; restaurants fulfill with their own couriers
     match /dispatchJobs/{jobId} {
-      allow get: if isVerifiedUser() && isValidId(jobId) && (
-        existing().ownerId == request.auth.uid ||
-        existing().courierId == request.auth.uid ||
-        (existing().status == 'open' && isRegisteredCourier()) ||
-        isAdmin()
-      );
-      allow list: if isVerifiedUser() && (
-        resource.data.status == 'open' ||
-        resource.data.courierId == request.auth.uid ||
-        resource.data.ownerId == request.auth.uid ||
-        isBootstrappedAdmin()
-      );
-
-      allow create: if isVerifiedUser()
-        && isValidId(jobId)
-        && isValidDispatchJob(incoming())
-        && incoming().ownerId == request.auth.uid
-        && incoming().courierId == ''
-        && incoming().status == 'open'
-        && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time
-        && existsAfter(/databases/$(database)/documents/orders/$(incoming().orderId));
-
-      allow update: if isVerifiedUser()
-        && isValidId(jobId)
-        && isValidDispatchJob(incoming())
-        && incoming().ownerId == existing().ownerId
-        && incoming().orderId == existing().orderId
-        && incoming().orderNumber == existing().orderNumber
-        && incoming().createdAt == existing().createdAt
-        && incoming().updatedAt == request.time
-        && existing().status != 'delivered'
-        && (
-          isAdmin() ||
-          (
-            isRegisteredCourier() &&
-            (
-              (
-                existing().status == 'open' &&
-                existing().courierId == '' &&
-                incoming().courierId == request.auth.uid &&
-                incoming().status == 'accepted' &&
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'courierId', 'courierName', 'status', 'updatedAt'
-                ])
-              ) ||
-              (
-                existing().courierId == request.auth.uid &&
-                incoming().courierId == request.auth.uid &&
-                incoming().status in ['picked_up', 'delivered'] &&
-                incoming().diff(existing()).affectedKeys().hasOnly([
-                  'status', 'updatedAt'
-                ])
-              )
-            )
-          )
-        );
-
+      allow get: if isVerifiedUser() && isValidId(jobId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create, update: if false;
       allow delete: if isAdmin() && isValidId(jobId);
     }
 

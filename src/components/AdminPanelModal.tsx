@@ -17,7 +17,6 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import {
-  Bike,
   Building2,
   CheckCircle2,
   ClipboardList,
@@ -55,8 +54,6 @@ import type {
   CommissionConfig,
   CommissionMode,
   ContinentId,
-  CourierPrivateContact,
-  CourierProfile,
   MemberProfile,
   Order,
   OrderStatus,
@@ -91,7 +88,6 @@ type AdminSection =
   | 'overview'
   | 'members'
   | 'restaurants'
-  | 'couriers'
   | 'dishes'
   | 'orders_admins'
   | 'commission'
@@ -153,12 +149,6 @@ export function AdminPanelModal({
 
   const [section, setSection] = useState<AdminSection>('overview');
   const [restaurants, setRestaurants] = useState<RestaurantProfile[]>([]);
-  const [couriers, setCouriers] = useState<CourierProfile[]>([]);
-  const [courierSearch, setCourierSearch] = useState('');
-  const [inspectedCourierContact, setInspectedCourierContact] = useState<{
-    courierName: string;
-    contact: CourierPrivateContact | null;
-  } | null>(null);
   const [dishes, setDishes] = useState<PartnerDishRecord[]>([]);
   const [admins, setAdmins] = useState<AdminUserRecord[]>([]);
   const [members, setMembers] = useState<MemberProfile[]>([]);
@@ -206,12 +196,6 @@ export function AdminPanelModal({
   const [custServiceFee, setCustServiceFee] = useState(
     String(commissionConfig.customerServiceFeeTry)
   );
-  const [courierSharePct, setCourierSharePct] = useState(
-    String(commissionConfig.courierSharePct)
-  );
-  const [courierMinFee, setCourierMinFee] = useState(
-    String(commissionConfig.courierMinFeeTry)
-  );
   const [commSaving, setCommSaving] = useState(false);
   const [commErr, setCommErr] = useState('');
   const [simBasketTry, setSimBasketTry] = useState('500');
@@ -234,8 +218,6 @@ export function AdminPanelModal({
     setCommFixed(String(commissionConfig.fixedCommissionTry));
     setCommMin(String(commissionConfig.minCommissionTry));
     setCustServiceFee(String(commissionConfig.customerServiceFeeTry));
-    setCourierSharePct(String(commissionConfig.courierSharePct));
-    setCourierMinFee(String(commissionConfig.courierMinFeeTry));
   }, [commissionConfig]);
 
   useEffect(() => {
@@ -370,24 +352,6 @@ export function AdminPanelModal({
       setMembersLoading(false);
     }
 
-    let unsubCouriers: (() => void) | undefined;
-    if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
-      unsubCouriers = onSnapshot(
-        collection(db, 'couriers'),
-        (snap) => {
-          setCouriers(
-            snap.docs.map((d) => ({
-              id: d.id,
-              ...(d.data() as Omit<CourierProfile, 'id'>),
-            }))
-          );
-        },
-        (error) => {
-          handleFirestoreError(error, OperationType.LIST, 'couriers');
-        }
-      );
-    }
-
     let unsubOverrides: (() => void) | undefined;
     if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
       unsubOverrides = onSnapshot(
@@ -415,7 +379,6 @@ export function AdminPanelModal({
       unsubDishes();
       unsubAdmins();
       if (unsubMembers) unsubMembers();
-      if (unsubCouriers) unsubCouriers();
       if (unsubOverrides) unsubOverrides();
     };
   }, [isOpen, isAdminAuthorized, user]);
@@ -476,18 +439,6 @@ export function AdminPanelModal({
     });
   }, [restaurants, restSearch, restStatusFilter]);
 
-  const filteredCouriers = useMemo(() => {
-    const q = courierSearch.trim().toLocaleLowerCase('tr');
-    if (!q) return couriers;
-    return couriers.filter((c) => {
-      const text =
-        `${c.fullName} ${c.cityName} ${c.district} ${c.plateOrBagCode} ${c.vehicleType}`.toLocaleLowerCase(
-          'tr'
-        );
-      return text.includes(q);
-    });
-  }, [couriers, courierSearch]);
-
   const filteredDishes = useMemo(() => {
     const q = dishSearch.trim().toLocaleLowerCase('tr');
     return dishes.filter((d) => {
@@ -536,19 +487,11 @@ export function AdminPanelModal({
         restaurantCommissionPct: Number(commPct),
         fixedCommissionTry: Number(commFixed),
         customerServiceFeeTry: Number(custServiceFee),
-        courierSharePct: Number(courierSharePct),
-        courierMinFeeTry: Number(courierMinFee),
+        courierSharePct: 0,
+        courierMinFeeTry: 0,
         minCommissionTry: Number(commMin),
       }),
-    [
-      commMode,
-      commPct,
-      commFixed,
-      custServiceFee,
-      courierSharePct,
-      courierMinFee,
-      commMin,
-    ]
+    [commMode, commPct, commFixed, custServiceFee, commMin]
   );
 
   const simulatorBreakdown = useMemo(() => {
@@ -727,21 +670,6 @@ export function AdminPanelModal({
     }
   };
 
-  const handleInspectCourierContact = async (courier: CourierProfile) => {
-    const path = `couriers/${courier.id}/private/contact`;
-    try {
-      const snap = await getDoc(
-        doc(db, 'couriers', courier.id, 'private', 'contact')
-      );
-      setInspectedCourierContact({
-        courierName: courier.fullName,
-        contact: snap.exists() ? (snap.data() as CourierPrivateContact) : null,
-      });
-    } catch (error) {
-      handleFirestoreError(error, OperationType.GET, path);
-    }
-  };
-
   const handleSaveCommissionConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -753,8 +681,8 @@ export function AdminPanelModal({
       restaurantCommissionPct: Number(commPct),
       fixedCommissionTry: Number(commFixed),
       customerServiceFeeTry: Number(custServiceFee),
-      courierSharePct: Number(courierSharePct),
-      courierMinFeeTry: Number(courierMinFee),
+      courierSharePct: 0,
+      courierMinFeeTry: 0,
       minCommissionTry: Number(commMin),
     });
 
@@ -774,8 +702,8 @@ export function AdminPanelModal({
         restaurantCommissionPct: sanitized.restaurantCommissionPct,
         fixedCommissionTry: sanitized.fixedCommissionTry,
         customerServiceFeeTry: sanitized.customerServiceFeeTry,
-        courierSharePct: sanitized.courierSharePct,
-        courierMinFeeTry: sanitized.courierMinFeeTry,
+        courierSharePct: 0,
+        courierMinFeeTry: 0,
         minCommissionTry: sanitized.minCommissionTry,
         updatedByEmail: safeUpdaterEmail,
         updatedAt: serverTimestamp(),
@@ -882,7 +810,6 @@ export function AdminPanelModal({
     overview: 'Genel Bakış',
     members: 'Uygulama Üyeleri',
     restaurants: 'Restoranlar',
-    couriers: 'Kurye İş Ortakları',
     dishes: 'Menü Kataloğu',
     orders_admins: 'Siparişler & Yetkiler',
     commission: 'Komisyon & Ücretler',
@@ -1070,24 +997,6 @@ export function AdminPanelModal({
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
                   {restaurants.length}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSection('couriers')}
-                className={`flex items-center justify-between gap-2 px-3 py-2.5 min-h-[40px] rounded-lg text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                  section === 'couriers'
-                    ? 'bg-[#D9043D] text-white'
-                    : 'text-[#575550] hover:bg-[#FAF9F7] hover:text-[#141413]'
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Bike className="w-4 h-4 shrink-0" />
-                  <span>Kuryeler</span>
-                </span>
-                <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {couriers.length}
                 </span>
               </button>
 
@@ -1844,123 +1753,6 @@ export function AdminPanelModal({
                 </div>
               )}
 
-              {section === 'couriers' && (
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="relative sm:w-80">
-                      <Search className="w-4 h-4 text-[#575550] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={courierSearch}
-                        onChange={(e) => setCourierSearch(e.target.value)}
-                        placeholder="Kurye adı, şehir, ilçe veya plaka ara..."
-                        className="w-full pl-9 pr-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
-                      />
-                    </div>
-                    <p className="text-xs text-[#575550] font-mono tabular-nums">
-                      Çevrimiçi:{' '}
-                      {couriers.filter((c) => c.availability === 'online').length} ·
-                      Teslimatta:{' '}
-                      {couriers.filter((c) => c.availability === 'busy').length}
-                    </p>
-                  </div>
-
-                  {inspectedCourierContact && (
-                    <div className="bg-white border border-[#D9043D]/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1 text-xs">
-                        <p className="font-semibold text-[#141413]">
-                          {inspectedCourierContact.courierName} — Kurye Gizli İletişim Kaydı
-                        </p>
-                        {inspectedCourierContact.contact ? (
-                          <p className="text-[#575550]">
-                            E-posta: {inspectedCourierContact.contact.contactEmail} · Telefon:{' '}
-                            {inspectedCourierContact.contact.contactPhone} · Ehliyet/Vergi No:{' '}
-                            {inspectedCourierContact.contact.licenseOrTaxId}
-                          </p>
-                        ) : (
-                          <p className="text-[#575550]">İletişim kaydı bulunamadı.</p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setInspectedCourierContact(null)}
-                        className="text-xs font-medium text-[#D9043D] hover:underline self-start sm:self-center cursor-pointer"
-                      >
-                        Kapat
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="bg-white border border-[#E6E4DF] rounded-xl overflow-hidden">
-                    {filteredCouriers.length === 0 ? (
-                      <div className="p-10 text-center space-y-2">
-                        <p className="font-display text-base font-medium text-[#141413]">
-                          Kayıtlı kurye iş ortağı bulunamadı
-                        </p>
-                        <p className="text-xs text-[#575550]">
-                          &ldquo;Restoran &amp; Kurye Ortağı&rdquo; portalından yeni kurye başvurusu yapıldığında burada listelenir.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-xs">
-                          <thead>
-                            <tr className="border-b border-[#E6E4DF] bg-[#FAF9F7] text-[#575550]">
-                              <th className="py-3 px-4 font-medium">Kurye</th>
-                              <th className="py-3 px-4 font-medium">Bölge</th>
-                              <th className="py-3 px-4 font-medium">Araç / Kod</th>
-                              <th className="py-3 px-4 font-medium">Vardiya</th>
-                              <th className="py-3 px-4 font-medium text-right">
-                                Teslimat
-                              </th>
-                              <th className="py-3 px-4 font-medium text-right">
-                                İletişim
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-[#E6E4DF]">
-                            {filteredCouriers.map((courier) => (
-                              <tr key={courier.id} className="hover:bg-[#FAF9F7]">
-                                <td className="py-3 px-4 font-medium text-[#141413]">
-                                  {courier.fullName}
-                                </td>
-                                <td className="py-3 px-4 text-[#575550]">
-                                  {courier.cityName} · {courier.district}
-                                </td>
-                                <td className="py-3 px-4 font-mono text-[#141413]">
-                                  {courier.vehicleType} · {courier.plateOrBagCode}
-                                </td>
-                                <td className="py-3 px-4 text-[#141413]">
-                                  {courier.availability === 'online'
-                                    ? 'Çevrimiçi'
-                                    : courier.availability === 'busy'
-                                      ? 'Teslimatta'
-                                      : 'Çevrimdışı'}
-                                </td>
-                                <td className="py-3 px-4 text-right font-mono tabular-nums text-[#141413]">
-                                  {courier.completedDeliveries}
-                                </td>
-                                <td className="py-3 px-4 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleInspectCourierContact(courier)
-                                    }
-                                    className="px-2.5 py-1.5 rounded-md border border-[#E6E4DF] text-[11px] font-medium text-[#141413] hover:border-[#D9043D] cursor-pointer"
-                                  >
-                                    İletişimi Gör
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
               {section === 'dishes' && (
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2309,7 +2101,7 @@ export function AdminPanelModal({
                             Platform Komisyon & Ücret Politikası
                           </h3>
                           <p className="text-xs text-[#575550] mt-0.5">
-                            Restoran komisyonu, müşteri hizmet bedeli ve kurye kazanç payını belirleyin.
+                            Restoran komisyonu ve müşteri hizmet bedelini belirleyin. Teslimatlar yalnızca restoran kuryesiyle yapılır.
                           </p>
                         </div>
                         <span className="font-mono tabular-nums text-xs font-semibold text-[#D9043D] shrink-0">
@@ -2470,34 +2262,11 @@ export function AdminPanelModal({
                           />
                         </div>
 
-                        <div>
-                          <label className="block text-xs font-medium text-[#575550] mb-1">
-                            Kurye Pay Oranı (%)
-                          </label>
-                          <input
-                            type="number"
-                            min={COMMISSION_BOUNDS.pctMin}
-                            max={COMMISSION_BOUNDS.pctMax}
-                            step="0.5"
-                            value={courierSharePct}
-                            onChange={(e) => setCourierSharePct(e.target.value)}
-                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-medium text-[#575550] mb-1">
-                            Kurye Minimum Ücret (₺)
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={COMMISSION_BOUNDS.courierMinFeeMax}
-                            step="1"
-                            value={courierMinFee}
-                            onChange={(e) => setCourierMinFee(e.target.value)}
-                            className="w-full px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-sm font-mono tabular-nums"
-                          />
+                        <div className="sm:col-span-2 rounded-lg border border-[#E6E4DF] bg-[#FAF9F7] px-3.5 py-2.5 text-xs text-[#575550]">
+                          <strong className="text-[#141413]">
+                            Teslimat Modeli: Yalnızca Restoran Kuryesi
+                          </strong>{' '}
+                          — Platform kurye hizmeti kapalıdır; her sipariş doğrudan ilgili restoranın kendi kuryesi tarafından teslim edilir.
                         </div>
                       </div>
 
@@ -2610,10 +2379,10 @@ export function AdminPanelModal({
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#575550]">
-                            Tahmini Kurye Kazancı
+                            Teslimat Kuryesi
                           </span>
-                          <span className="font-mono tabular-nums font-medium text-[#141413]">
-                            {simulatorBreakdown.courierEarningsTry.toLocaleString('tr-TR')} ₺
+                          <span className="font-medium text-[#141413]">
+                            Restoran Kuryesi
                           </span>
                         </div>
                         <div className="flex justify-between pt-2 border-t border-[#E6E4DF] font-semibold">

@@ -2,14 +2,12 @@ import { useLanguage } from '../i18n/LanguageContext';
 
 interface CraftsmanshipSectionProps {
   onOpenRestaurantPortal: () => void;
-  onOpenCourierPortal: () => void;
   onOpenExtensionStudio: () => void;
   registeredCount: number;
 }
 
 export function CraftsmanshipSection({
   onOpenRestaurantPortal,
-  onOpenCourierPortal,
   onOpenExtensionStudio,
   registeredCount,
 }: CraftsmanshipSectionProps) {
@@ -23,8 +21,8 @@ export function CraftsmanshipSection({
     },
     {
       index: '02.',
-      title: 'İki Bölmeli Termal Kurye Çantaları',
-      body: 'Ramen suyu ile taze erişte, çıtır hamur ile sos ayrı bölmelerde taşınır; yemek masanıza çıktığı ilk dokusunu kapınızda da korur.',
+      title: 'Restoran Kuryesi & Termal Çanta Standardı',
+      body: 'Siparişler doğrudan restoranın kendi kuryesiyle, ramen suyu ile erişte veya çıtır hamur ile sos ayrı termal bölmelerde taşınır.',
     },
     {
       index: '03.',
@@ -63,16 +61,9 @@ export function CraftsmanshipSection({
             <button
               type="button"
               onClick={onOpenRestaurantPortal}
-              className="px-5 py-2.5 min-h-[42px] rounded-lg border border-[#D9043D] text-[#D9043D] text-sm font-medium hover:bg-[#D9043D] hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              {t.craftPartnerBtn}{registeredCount > 0 ? ` (${registeredCount})` : ''}
-            </button>
-            <button
-              type="button"
-              onClick={onOpenCourierPortal}
               className="px-5 py-2.5 min-h-[42px] rounded-lg bg-[#D9043D] text-white text-sm font-medium hover:bg-[#B80032] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              {t.craftCourierBtn}
+              {t.craftPartnerBtn}{registeredCount > 0 ? ` (${registeredCount})` : ''}
             </button>
           </div>
         </div>
