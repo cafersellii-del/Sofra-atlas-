@@ -11,6 +11,7 @@ export interface OrderMetaPayload {
   restaurantName?: string;
   courierName?: string;
   customerName?: string;
+  cityId?: string;
   cityName?: string;
   neighborhood?: string;
   orderStatus?: Order['status'];
@@ -21,6 +22,7 @@ export function buildOrderMeta(order: Order): OrderMetaPayload {
     restaurantName: order.items[0]?.restaurantName || 'Sofra Atlas Mutfağı',
     courierName: order.courierName,
     customerName: order.customerName,
+    cityId: order.cityId,
     cityName: order.cityName,
     neighborhood: order.neighborhood,
     orderStatus: order.status,

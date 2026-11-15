@@ -271,6 +271,10 @@
           "minLength": 2,
           "maxLength": 100
         },
+        "regionScope": {
+          "type": "string",
+          "enum": ["all", "non_turkey"]
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time"
@@ -867,6 +871,12 @@
           "type": "string",
           "minLength": 2,
           "maxLength": 80
+        },
+        "cityId": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 32,
+          "pattern": "^[a-z0-9\\-]+$"
         },
         "commissionMode": {
           "type": "string",

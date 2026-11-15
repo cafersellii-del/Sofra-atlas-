@@ -30,11 +30,42 @@ service cloud.firestore {
       return isVerifiedUser() && request.auth.token.email == 'cafersellii@gmail.com';
     }
 
-    function isAdmin() {
+    function isNonTurkeyRegionalAdminIdentity() {
+      return isVerifiedUser()
+        && request.auth.uid == 'qVBbf293ecY6F9H5Tn6aHWCUqL42'
+        && request.auth.token.email == 'tayactacyvonne02@gmail.com';
+    }
+
+    function isNonTurkeyRegion(cityId) {
+      return cityId is string && cityId != 'istanbul';
+    }
+
+    function isGlobalAdmin() {
       return isBootstrappedAdmin() || (
         isVerifiedUser() &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        (
+          !('regionScope' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data) ||
+          get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.regionScope == 'all'
+        )
       );
+    }
+
+    function isNonTurkeyAdmin() {
+      return isNonTurkeyRegionalAdminIdentity() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        'regionScope' in get(/databases/$(database)/documents/admins/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.regionScope == 'non_turkey'
+      );
+    }
+
+    function isAdmin() {
+      return isGlobalAdmin() || isNonTurkeyAdmin();
+    }
+
+    function isAdminForRegion(cityId) {
+      return isGlobalAdmin() || (isNonTurkeyAdmin() && isNonTurkeyRegion(cityId));
     }
 
     function isValidCityId(cityId) {
@@ -66,7 +97,6 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
-        && (data.ownerId == request.auth.uid || isAdmin())
         && data.name is string && data.name.size() >= 2 && data.name.size() <= 80
         && isValidCityId(data.cityId)
         && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
@@ -76,7 +106,8 @@ service cloud.firestore {
         && data.tagline is string && data.tagline.size() >= 4 && data.tagline.size() <= 200
         && data.status in ['active', 'paused']
         && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
+        && data.updatedAt is timestamp
+        && (data.ownerId == request.auth.uid || isAdminForRegion(data.cityId));
     }
 
     function isValidPrivateContact(data) {
@@ -108,7 +139,6 @@ service cloud.firestore {
           'isChefSignature', 'imagePreset', 'isPublished', 'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
-        && (data.ownerId == request.auth.uid || isAdmin())
         && data.restaurantId is string && isValidId(data.restaurantId)
         && data.restaurantName is string && data.restaurantName.size() >= 2 && data.restaurantName.size() <= 80
         && isValidCityId(data.cityId)
@@ -128,15 +158,17 @@ service cloud.firestore {
         && data.imagePreset is string && data.imagePreset.size() <= 64
         && data.isPublished is bool
         && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
+        && data.updatedAt is timestamp
+        && (data.ownerId == request.auth.uid || isAdminForRegion(data.cityId));
     }
 
     function isValidAdminUser(data) {
       return data.keys().hasAll(['uid', 'email', 'note', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['uid', 'email', 'note', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'note', 'regionScope', 'createdAt', 'updatedAt'])
         && data.uid is string && isValidId(data.uid)
         && data.email is string && data.email.size() >= 5 && data.email.size() <= 120
         && data.note is string && data.note.size() >= 2 && data.note.size() <= 100
+        && (!('regionScope' in data) || data.regionScope in ['all', 'non_turkey'])
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -163,10 +195,6 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
-        && (
-          data.ownerId == request.auth.uid ||
-          isAdmin()
-        )
         && data.orderNumber is string && data.orderNumber.size() >= 4 && data.orderNumber.size() <= 32
         && isValidCityId(data.cityId)
         && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
@@ -203,7 +231,11 @@ service cloud.firestore {
         && (!('courierId' in data) || (data.courierId is string && data.courierId.size() <= 128 && (data.courierId == '' || isValidId(data.courierId))))
         && (!('courierStatus' in data) || data.courierStatus in ['waiting_courier', 'accepted', 'picked_up', 'delivered'])
         && data.createdAt is timestamp
-        && data.updatedAt is timestamp;
+        && data.updatedAt is timestamp
+        && (
+          data.ownerId == request.auth.uid ||
+          isAdminForRegion(data.cityId)
+        );
     }
 
     function isValidSavedCard(data) {
@@ -260,7 +292,7 @@ service cloud.firestore {
           'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && isValidId(data.ownerId)
-        && (data.ownerId == request.auth.uid || isAdmin())
+        && (data.ownerId == request.auth.uid || isGlobalAdmin())
         && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80
         && isValidCityId(data.cityId)
         && data.cityName is string && data.cityName.size() >= 2 && data.cityName.size() <= 60
@@ -352,10 +384,11 @@ service cloud.firestore {
           'fixedCommissionTry', 'note', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'restaurantName', 'commissionMode', 'restaurantCommissionPct',
+          'restaurantName', 'cityId', 'commissionMode', 'restaurantCommissionPct',
           'fixedCommissionTry', 'note', 'updatedAt'
         ])
         && data.restaurantName is string && data.restaurantName.size() >= 2 && data.restaurantName.size() <= 80
+        && (!('cityId' in data) || isValidCityId(data.cityId))
         && data.commissionMode in ['percentage', 'fixed', 'hybrid']
         && data.restaurantCommissionPct is number && data.restaurantCommissionPct >= 0 && data.restaurantCommissionPct <= 50
         && data.fixedCommissionTry is number && data.fixedCommissionTry >= 0 && data.fixedCommissionTry <= 5000
@@ -365,25 +398,70 @@ service cloud.firestore {
 
     match /admins/{adminId} {
       allow get: if isVerifiedUser() && isValidId(adminId) && (
-        adminId == request.auth.uid || isAdmin()
+        adminId == request.auth.uid ||
+        isGlobalAdmin() ||
+        (
+          isNonTurkeyAdmin() &&
+          resource != null &&
+          'regionScope' in existing() &&
+          existing().regionScope == 'non_turkey'
+        )
       );
       allow list: if isBootstrappedAdmin() || (
         isVerifiedUser() && resource.data.uid == request.auth.uid
+      ) || (
+        isNonTurkeyRegionalAdminIdentity() &&
+        'regionScope' in resource.data &&
+        resource.data.regionScope == 'non_turkey'
       );
-      allow create: if isAdmin()
+      allow create: if isVerifiedUser()
         && isValidId(adminId)
         && isValidAdminUser(incoming())
         && incoming().uid == adminId
         && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
-      allow update: if isAdmin()
+        && incoming().updatedAt == request.time
+        && (
+          isGlobalAdmin() ||
+          (
+            isNonTurkeyAdmin() &&
+            'regionScope' in incoming() &&
+            incoming().regionScope == 'non_turkey'
+          )
+        );
+      allow update: if isVerifiedUser()
         && isValidId(adminId)
         && isValidAdminUser(incoming())
         && incoming().uid == existing().uid
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
-        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'note', 'updatedAt']);
-      allow delete: if isAdmin() && isValidId(adminId);
+        && (
+          (
+            isGlobalAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['email', 'note', 'regionScope', 'updatedAt'])
+          ) ||
+          (
+            isNonTurkeyAdmin() &&
+            adminId != 'qVBbf293ecY6F9H5Tn6aHWCUqL42' &&
+            'regionScope' in existing() &&
+            existing().regionScope == 'non_turkey' &&
+            'regionScope' in incoming() &&
+            incoming().regionScope == 'non_turkey' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['email', 'note', 'updatedAt'])
+          )
+        );
+      allow delete: if isVerifiedUser()
+        && isValidId(adminId)
+        && resource != null
+        && (
+          isGlobalAdmin() ||
+          (
+            isNonTurkeyAdmin() &&
+            adminId != request.auth.uid &&
+            adminId != 'qVBbf293ecY6F9H5Tn6aHWCUqL42' &&
+            'regionScope' in existing() &&
+            existing().regionScope == 'non_turkey'
+          )
+        );
     }
 
     match /restaurants/{restaurantId} {
@@ -391,18 +469,22 @@ service cloud.firestore {
         (isSignedIn() && restaurantId == request.auth.uid && resource == null) ||
         (resource != null && existing().status == 'active') ||
         (isSignedIn() && resource != null && existing().ownerId == request.auth.uid) ||
-        isAdmin()
+        (resource != null && isAdminForRegion(existing().cityId))
       );
       allow list: if resource.data.status == 'active' ||
         (isSignedIn() && resource.data.ownerId == request.auth.uid) ||
-        isBootstrappedAdmin();
+        isBootstrappedAdmin() ||
+        (isNonTurkeyRegionalAdminIdentity() && isNonTurkeyRegion(resource.data.cityId));
 
       allow create: if isVerifiedUser()
         && isValidId(restaurantId)
-        && restaurantId == request.auth.uid
         && isValidRestaurant(incoming())
         && incoming().createdAt == request.time
-        && incoming().updatedAt == request.time;
+        && incoming().updatedAt == request.time
+        && (
+          restaurantId == request.auth.uid ||
+          isAdminForRegion(incoming().cityId)
+        );
 
       allow update: if isVerifiedUser()
         && isValidId(restaurantId)
@@ -411,10 +493,14 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
-            'name', 'cityId', 'cityName', 'district', 'cuisineCategory',
-            'avgPrepMinutes', 'tagline', 'status', 'updatedAt'
-          ])) ||
+          (
+            isAdminForRegion(existing().cityId) &&
+            isAdminForRegion(incoming().cityId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'cityId', 'cityName', 'district', 'cuisineCategory',
+              'avgPrepMinutes', 'tagline', 'status', 'updatedAt'
+            ])
+          ) ||
           (
             restaurantId == request.auth.uid &&
             existing().ownerId == request.auth.uid &&
@@ -428,7 +514,10 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if isAdmin() && isValidId(restaurantId);
+      allow delete: if isVerifiedUser()
+        && isValidId(restaurantId)
+        && resource != null
+        && isAdminForRegion(existing().cityId);
 
       match /private/{docId} {
         allow get: if isVerifiedUser()
@@ -437,7 +526,10 @@ service cloud.firestore {
           && docId == 'contact'
           && (
             (request.auth.uid == restaurantId && (resource == null || existing().ownerId == request.auth.uid)) ||
-            isAdmin()
+            (
+              exists(/databases/$(database)/documents/restaurants/$(restaurantId)) &&
+              isAdminForRegion(get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.cityId)
+            )
           );
         allow list: if false;
 
@@ -463,28 +555,43 @@ service cloud.firestore {
             'contactEmail', 'contactPhone', 'streetAddress', 'taxId', 'updatedAt'
           ]);
 
-        allow delete: if isAdmin() && isValidId(restaurantId) && isValidId(docId);
+        allow delete: if isValidId(restaurantId) && isValidId(docId) && (
+          (!exists(/databases/$(database)/documents/restaurants/$(restaurantId)) && isGlobalAdmin()) ||
+          (
+            exists(/databases/$(database)/documents/restaurants/$(restaurantId)) &&
+            isAdminForRegion(get(/databases/$(database)/documents/restaurants/$(restaurantId)).data.cityId)
+          )
+        );
       }
     }
 
     match /dishes/{dishId} {
-      allow get: if isValidId(dishId) && (
+      allow get: if isValidId(dishId) && resource != null && (
         existing().isPublished == true ||
         (isSignedIn() && existing().ownerId == request.auth.uid) ||
-        isAdmin()
+        isAdminForRegion(existing().cityId)
       );
       allow list: if resource.data.isPublished == true ||
         (isSignedIn() && resource.data.ownerId == request.auth.uid) ||
-        isBootstrappedAdmin();
+        isBootstrappedAdmin() ||
+        (isNonTurkeyRegionalAdminIdentity() && isNonTurkeyRegion(resource.data.cityId));
 
       allow create: if isVerifiedUser()
         && isValidId(dishId)
         && isValidPartnerDish(incoming())
-        && incoming().restaurantId == request.auth.uid
         && incoming().createdAt == request.time
         && incoming().updatedAt == request.time
         && exists(/databases/$(database)/documents/restaurants/$(incoming().restaurantId))
-        && get(/databases/$(database)/documents/restaurants/$(incoming().restaurantId)).data.ownerId == request.auth.uid;
+        && (
+          (
+            incoming().restaurantId == request.auth.uid &&
+            incoming().ownerId == request.auth.uid &&
+            get(/databases/$(database)/documents/restaurants/$(incoming().restaurantId)).data.ownerId == request.auth.uid
+          ) || (
+            isAdminForRegion(incoming().cityId) &&
+            isAdminForRegion(get(/databases/$(database)/documents/restaurants/$(incoming().restaurantId)).data.cityId)
+          )
+        );
 
       allow update: if isVerifiedUser()
         && isValidId(dishId)
@@ -494,11 +601,16 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         && (
-          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly([
-            'isPublished', 'name', 'category', 'description', 'story',
-            'ingredients', 'priceTry', 'prepMinutes', 'calories',
-            'isVegetarian', 'isSpicy', 'isChefSignature', 'imagePreset', 'updatedAt'
-          ])) ||
+          (
+            isAdminForRegion(existing().cityId) &&
+            isAdminForRegion(incoming().cityId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'isPublished', 'name', 'category', 'description', 'story',
+              'ingredients', 'priceTry', 'prepMinutes', 'calories',
+              'isVegetarian', 'isSpicy', 'isChefSignature', 'imagePreset',
+              'cityId', 'cityName', 'district', 'restaurantName', 'updatedAt'
+            ])
+          ) ||
           (
             existing().ownerId == request.auth.uid &&
             (
@@ -514,23 +626,27 @@ service cloud.firestore {
 
       allow delete: if isVerifiedUser()
         && isValidId(dishId)
-        && (existing().ownerId == request.auth.uid || isAdmin());
+        && resource != null
+        && (existing().ownerId == request.auth.uid || isAdminForRegion(existing().cityId));
     }
 
     match /orders/{orderId} {
-      allow get: if isVerifiedUser() && isValidId(orderId) && (
+      allow get: if isVerifiedUser() && isValidId(orderId) && resource != null && (
         existing().ownerId == request.auth.uid ||
-        isAdmin()
+        isAdminForRegion(existing().cityId)
       );
       allow list: if isVerifiedUser() && (
         resource.data.ownerId == request.auth.uid ||
-        isBootstrappedAdmin()
+        isBootstrappedAdmin() ||
+        (isNonTurkeyRegionalAdminIdentity() && isNonTurkeyRegion(resource.data.cityId))
       );
 
       allow create: if isVerifiedUser()
         && isValidId(orderId)
         && isValidCustomerOrder(incoming())
         && incoming().ownerId == request.auth.uid
+        && incoming().status == 'received'
+        && incoming().refundId == ''
         && (!('courierId' in incoming()) || incoming().courierId == '')
         && (!('courierStatus' in incoming()) || incoming().courierStatus in ['accepted', 'waiting_courier'])
         && incoming().createdAt == request.time
@@ -545,7 +661,8 @@ service cloud.firestore {
         && incoming().updatedAt == request.time
         && (
           (
-            isAdmin() &&
+            isAdminForRegion(existing().cityId) &&
+            isAdminForRegion(incoming().cityId) &&
             incoming().diff(existing()).affectedKeys().hasOnly([
               'status', 'paymentStatus', 'refundId', 'courierId',
               'courierName', 'courierStatus', 'updatedAt'
@@ -558,29 +675,32 @@ service cloud.firestore {
           )
         );
 
-      allow delete: if isAdmin() && isValidId(orderId);
+      allow delete: if isVerifiedUser()
+        && isValidId(orderId)
+        && resource != null
+        && isAdminForRegion(existing().cityId);
     }
 
     // Platform courier onboarding is disabled; deliveries are handled by restaurant couriers
     match /couriers/{courierId} {
-      allow get: if isVerifiedUser() && isValidId(courierId) && isAdmin();
+      allow get: if isVerifiedUser() && isValidId(courierId) && isGlobalAdmin();
       allow list: if isBootstrappedAdmin();
       allow create, update: if false;
-      allow delete: if isAdmin() && isValidId(courierId);
+      allow delete: if isGlobalAdmin() && isValidId(courierId);
 
       match /private/{docId} {
-        allow get: if isVerifiedUser() && isValidId(courierId) && isValidId(docId) && docId == 'contact' && isAdmin();
+        allow get: if isVerifiedUser() && isValidId(courierId) && isValidId(docId) && docId == 'contact' && isGlobalAdmin();
         allow list, create, update: if false;
-        allow delete: if isAdmin() && isValidId(courierId) && isValidId(docId);
+        allow delete: if isGlobalAdmin() && isValidId(courierId) && isValidId(docId);
       }
     }
 
     // Platform courier dispatch queue is disabled; restaurants fulfill with their own couriers
     match /dispatchJobs/{jobId} {
-      allow get: if isVerifiedUser() && isValidId(jobId) && isAdmin();
+      allow get: if isVerifiedUser() && isValidId(jobId) && isGlobalAdmin();
       allow list: if isBootstrappedAdmin();
       allow create, update: if false;
-      allow delete: if isAdmin() && isValidId(jobId);
+      allow delete: if isGlobalAdmin() && isValidId(jobId);
     }
 
     match /users/{userId} {
@@ -588,10 +708,12 @@ service cloud.firestore {
         && isValidId(userId)
         && (
           (request.auth.uid == userId && (resource == null || existing().ownerId == request.auth.uid)) ||
-          isAdmin()
+          (resource != null && isAdminForRegion(existing().defaultCityId))
         );
       allow list: if isBootstrappedAdmin() || (
         isVerifiedUser() && resource.data.ownerId == request.auth.uid
+      ) || (
+        isNonTurkeyRegionalAdminIdentity() && isNonTurkeyRegion(resource.data.defaultCityId)
       );
 
       allow create: if isVerifiedUser()
@@ -659,27 +781,39 @@ service cloud.firestore {
         && existing().ownerId == request.auth.uid;
     }
 
-    // Platform-wide commission and fee settings (single config doc: /platformSettings/commission)
+    // Platform-wide and non-Turkey regional commission settings
     match /platformSettings/{settingId} {
-      allow get: if isValidId(settingId) && settingId == 'commission';
+      allow get: if isValidId(settingId) && settingId in ['commission', 'commission_non_turkey'];
       allow list: if false;
 
-      allow create: if isAdmin()
+      allow create: if isVerifiedUser()
         && isValidId(settingId)
-        && settingId == 'commission'
+        && settingId in ['commission', 'commission_non_turkey']
         && isValidCommissionConfig(incoming())
-        && incoming().updatedAt == request.time;
+        && incoming().updatedByEmail == request.auth.token.email
+        && incoming().updatedAt == request.time
+        && (
+          settingId == 'commission'
+            ? isGlobalAdmin()
+            : isAdmin()
+        );
 
-      allow update: if isAdmin()
+      allow update: if isVerifiedUser()
         && isValidId(settingId)
-        && settingId == 'commission'
+        && settingId in ['commission', 'commission_non_turkey']
         && isValidCommissionConfig(incoming())
+        && incoming().updatedByEmail == request.auth.token.email
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
           'commissionMode', 'restaurantCommissionPct', 'fixedCommissionTry',
           'customerServiceFeeTry', 'courierSharePct', 'courierMinFeeTry',
           'minCommissionTry', 'updatedByEmail', 'updatedAt'
-        ]);
+        ])
+        && (
+          settingId == 'commission'
+            ? isGlobalAdmin()
+            : isAdmin()
+        );
 
       allow delete: if false;
     }
@@ -687,23 +821,55 @@ service cloud.firestore {
     // Per-restaurant custom commission rate overrides managed by admins
     match /restaurantCommissions/{restaurantId} {
       allow get: if isValidId(restaurantId);
-      allow list: if isBootstrappedAdmin();
+      allow list: if isBootstrappedAdmin() || (
+        isNonTurkeyRegionalAdminIdentity() &&
+        'cityId' in resource.data &&
+        isNonTurkeyRegion(resource.data.cityId)
+      );
 
-      allow create: if isAdmin()
+      allow create: if isVerifiedUser()
         && isValidId(restaurantId)
         && isValidRestaurantCommissionOverride(incoming())
-        && incoming().updatedAt == request.time;
+        && incoming().updatedAt == request.time
+        && (
+          isGlobalAdmin() ||
+          (
+            isNonTurkeyAdmin() &&
+            'cityId' in incoming() &&
+            isNonTurkeyRegion(incoming().cityId)
+          )
+        );
 
-      allow update: if isAdmin()
+      allow update: if isVerifiedUser()
         && isValidId(restaurantId)
         && isValidRestaurantCommissionOverride(incoming())
         && incoming().updatedAt == request.time
         && incoming().diff(existing()).affectedKeys().hasOnly([
-          'restaurantName', 'commissionMode', 'restaurantCommissionPct',
+          'restaurantName', 'cityId', 'commissionMode', 'restaurantCommissionPct',
           'fixedCommissionTry', 'note', 'updatedAt'
-        ]);
+        ])
+        && (
+          isGlobalAdmin() ||
+          (
+            isNonTurkeyAdmin() &&
+            'cityId' in existing() &&
+            isNonTurkeyRegion(existing().cityId) &&
+            'cityId' in incoming() &&
+            isNonTurkeyRegion(incoming().cityId)
+          )
+        );
 
-      allow delete: if isAdmin() && isValidId(restaurantId);
+      allow delete: if isVerifiedUser()
+        && isValidId(restaurantId)
+        && resource != null
+        && (
+          isGlobalAdmin() ||
+          (
+            isNonTurkeyAdmin() &&
+            'cityId' in existing() &&
+            isNonTurkeyRegion(existing().cityId)
+          )
+        );
     }
 
     // Boot-time connectivity check document (read-only ping)

@@ -11,15 +11,18 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 import {
   Building2,
   CheckCircle2,
   ClipboardList,
+  Globe,
   LayoutGrid,
   LogOut,
   Mail,
@@ -40,6 +43,7 @@ import {
   CONTINENTS,
   CURATED_RESTAURANT_META,
   DISHES,
+  EXTRA_RESTAURANT_DISHES,
 } from '../data/catalog';
 import {
   auth,
@@ -63,6 +67,18 @@ import type {
   RestaurantProfile,
 } from '../types/food';
 import {
+  type AdminRegionScope,
+  BOOTSTRAPPED_ADMIN_EMAIL,
+  getAdminScopeLabel,
+  isBootstrappedSuperAdmin,
+  isHardcodedNonTurkeyAdmin,
+  isTurkeyCityId,
+  REGIONAL_NON_TURKEY_ADMIN_EMAIL,
+  REGIONAL_NON_TURKEY_ADMIN_UID,
+  resolveAdminDocScope,
+  TURKEY_CITY_ID,
+} from '../utils/adminScope';
+import {
   calculateOrderCommissionBreakdown,
   COMMISSION_BOUNDS,
   DEFAULT_COMMISSION_CONFIG,
@@ -78,10 +94,13 @@ interface AdminPanelModalProps {
   isOpen: boolean;
   orders: Order[];
   commissionConfig?: CommissionConfig;
+  nonTurkeyCommissionConfig?: CommissionConfig | null;
   onCommissionConfigUpdated?: (next: CommissionConfig) => void;
+  onNonTurkeyCommissionConfigUpdated?: (next: CommissionConfig) => void;
   onClose: () => void;
   onAdvanceOrderStatus: (orderId: string) => void;
   onRefundOrder?: (order: Order) => Promise<void> | void;
+  onDeleteOrder?: (order: Order) => Promise<void> | void;
 }
 
 type AdminSection =
@@ -92,8 +111,6 @@ type AdminSection =
   | 'orders_admins'
   | 'commission'
   | 'support';
-
-const BOOTSTRAPPED_ADMIN_EMAIL = 'cafersellii@gmail.com';
 
 const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   received: 'Sipariş Alındı',
@@ -136,14 +153,17 @@ export function AdminPanelModal({
   isOpen,
   orders,
   commissionConfig = DEFAULT_COMMISSION_CONFIG,
+  nonTurkeyCommissionConfig = null,
   onCommissionConfigUpdated,
+  onNonTurkeyCommissionConfigUpdated,
   onClose,
   onAdvanceOrderStatus,
   onRefundOrder,
+  onDeleteOrder,
 }: AdminPanelModalProps) {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [authReady, setAuthReady] = useState(false);
-  const [isAdminAuthorized, setIsAdminAuthorized] = useState(false);
+  const [adminScope, setAdminScope] = useState<AdminRegionScope | null>(null);
   const [checkingRole, setCheckingRole] = useState(false);
   const [authError, setAuthError] = useState('');
 
@@ -177,24 +197,34 @@ export function AdminPanelModal({
   const [newAdminUid, setNewAdminUid] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminNote, setNewAdminNote] = useState('');
+  const [newAdminScope, setNewAdminScope] =
+    useState<AdminRegionScope>('non_turkey');
   const [adminActionMsg, setAdminActionMsg] = useState('');
   const [adminActionErr, setAdminActionErr] = useState('');
 
   // Commission settings & overrides states
+  const [commissionTarget, setCommissionTarget] = useState<
+    'commission' | 'commission_non_turkey'
+  >('commission');
+  const activeEditedCommissionConfig =
+    commissionTarget === 'commission_non_turkey'
+      ? nonTurkeyCommissionConfig ?? commissionConfig
+      : commissionConfig;
+
   const [commMode, setCommMode] = useState<CommissionMode>(
-    commissionConfig.commissionMode
+    activeEditedCommissionConfig.commissionMode
   );
   const [commPct, setCommPct] = useState(
-    String(commissionConfig.restaurantCommissionPct)
+    String(activeEditedCommissionConfig.restaurantCommissionPct)
   );
   const [commFixed, setCommFixed] = useState(
-    String(commissionConfig.fixedCommissionTry)
+    String(activeEditedCommissionConfig.fixedCommissionTry)
   );
   const [commMin, setCommMin] = useState(
-    String(commissionConfig.minCommissionTry)
+    String(activeEditedCommissionConfig.minCommissionTry)
   );
   const [custServiceFee, setCustServiceFee] = useState(
-    String(commissionConfig.customerServiceFeeTry)
+    String(activeEditedCommissionConfig.customerServiceFeeTry)
   );
   const [commSaving, setCommSaving] = useState(false);
   const [commErr, setCommErr] = useState('');
@@ -205,6 +235,8 @@ export function AdminPanelModal({
     RestaurantCommissionOverride[]
   >([]);
   const [overrideRestName, setOverrideRestName] = useState('');
+  const [overrideCityId, setOverrideCityId] =
+    useState<Exclude<CityId, 'all'>>('napoli');
   const [overrideMode, setOverrideMode] = useState<CommissionMode>('percentage');
   const [overridePct, setOverridePct] = useState('12');
   const [overrideFixed, setOverrideFixed] = useState('35');
@@ -213,12 +245,14 @@ export function AdminPanelModal({
   const [overrideErr, setOverrideErr] = useState('');
 
   useEffect(() => {
-    setCommMode(commissionConfig.commissionMode);
-    setCommPct(String(commissionConfig.restaurantCommissionPct));
-    setCommFixed(String(commissionConfig.fixedCommissionTry));
-    setCommMin(String(commissionConfig.minCommissionTry));
-    setCustServiceFee(String(commissionConfig.customerServiceFeeTry));
-  }, [commissionConfig]);
+    setCommMode(activeEditedCommissionConfig.commissionMode);
+    setCommPct(String(activeEditedCommissionConfig.restaurantCommissionPct));
+    setCommFixed(String(activeEditedCommissionConfig.fixedCommissionTry));
+    setCommMin(String(activeEditedCommissionConfig.minCommissionTry));
+    setCustServiceFee(
+      String(activeEditedCommissionConfig.customerServiceFeeTry)
+    );
+  }, [activeEditedCommissionConfig]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
@@ -237,21 +271,37 @@ export function AdminPanelModal({
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  // Verify admin authorization
+  const isAdminAuthorized = adminScope !== null;
+  const isNonTurkeyScope = adminScope === 'non_turkey';
+  const isGlobalAdminUser = adminScope === 'all';
+  const isBootstrappedAdminUser = isBootstrappedSuperAdmin(user);
+
+  // Verify admin authorization and regional scope
   useEffect(() => {
     let active = true;
     async function verifyAdmin() {
       if (!authReady || !user || !user.emailVerified) {
         if (active) {
-          setIsAdminAuthorized(false);
+          setAdminScope(null);
           setCheckingRole(false);
         }
         return;
       }
 
-      if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+      if (isBootstrappedSuperAdmin(user)) {
         if (active) {
-          setIsAdminAuthorized(true);
+          setAdminScope('all');
+          setCommissionTarget('commission');
+          setCheckingRole(false);
+        }
+        return;
+      }
+
+      if (isHardcodedNonTurkeyAdmin(user)) {
+        if (active) {
+          setAdminScope('non_turkey');
+          setNewAdminScope('non_turkey');
+          setCommissionTarget('commission_non_turkey');
           setCheckingRole(false);
         }
         return;
@@ -261,10 +311,23 @@ export function AdminPanelModal({
       try {
         const snap = await getDoc(doc(db, 'admins', user.uid));
         if (active) {
-          setIsAdminAuthorized(snap.exists());
+          if (snap.exists()) {
+            const resolved = resolveAdminDocScope(
+              snap.data() as AdminUserRecord
+            );
+            setAdminScope(resolved);
+            if (resolved === 'non_turkey') {
+              setNewAdminScope('non_turkey');
+              setCommissionTarget('commission_non_turkey');
+            } else {
+              setCommissionTarget('commission');
+            }
+          } else {
+            setAdminScope(null);
+          }
         }
       } catch (error) {
-        if (active) setIsAdminAuthorized(false);
+        if (active) setAdminScope(null);
         handleFirestoreError(error, OperationType.GET, `admins/${user.uid}`);
       } finally {
         if (active) setCheckingRole(false);
@@ -277,13 +340,24 @@ export function AdminPanelModal({
     };
   }, [authReady, user]);
 
-  // Subscribe to all restaurants, dishes, and admin users once authorized
+  // Subscribe to scoped restaurants, dishes, admin users, members, and overrides once authorized
   useEffect(() => {
-    if (!isOpen || !isAdminAuthorized || !user) return;
+    if (!isOpen || !adminScope || !user) return;
 
     setDataLoading(true);
+    const isScopedNonTurkey = adminScope === 'non_turkey';
+    const isSuper = isBootstrappedSuperAdmin(user);
+    const isIntlIdentity = isHardcodedNonTurkeyAdmin(user);
+
+    const restQuery = isScopedNonTurkey
+      ? query(
+          collection(db, 'restaurants'),
+          where('cityId', '!=', TURKEY_CITY_ID)
+        )
+      : collection(db, 'restaurants');
+
     const unsubRest = onSnapshot(
-      collection(db, 'restaurants'),
+      restQuery,
       (snap) => {
         setRestaurants(
           snap.docs.map((d) => ({
@@ -299,8 +373,12 @@ export function AdminPanelModal({
       }
     );
 
+    const dishesQuery = isScopedNonTurkey
+      ? query(collection(db, 'dishes'), where('cityId', '!=', TURKEY_CITY_ID))
+      : collection(db, 'dishes');
+
     const unsubDishes = onSnapshot(
-      collection(db, 'dishes'),
+      dishesQuery,
       (snap) => {
         setDishes(
           snap.docs.map((d) => ({
@@ -314,8 +392,17 @@ export function AdminPanelModal({
       }
     );
 
+    const adminsQuery = isSuper
+      ? collection(db, 'admins')
+      : isIntlIdentity
+        ? query(
+            collection(db, 'admins'),
+            where('regionScope', '==', 'non_turkey')
+          )
+        : query(collection(db, 'admins'), where('uid', '==', user.uid));
+
     const unsubAdmins = onSnapshot(
-      collection(db, 'admins'),
+      adminsQuery,
       (snap) => {
         setAdmins(
           snap.docs.map((d) => ({
@@ -330,10 +417,16 @@ export function AdminPanelModal({
     );
 
     let unsubMembers: (() => void) | undefined;
-    if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+    if (isSuper || isIntlIdentity) {
       setMembersLoading(true);
+      const membersQuery = isSuper
+        ? collection(db, 'users')
+        : query(
+            collection(db, 'users'),
+            where('defaultCityId', '!=', TURKEY_CITY_ID)
+          );
       unsubMembers = onSnapshot(
-        collection(db, 'users'),
+        membersQuery,
         (snap) => {
           setMembers(
             snap.docs.map((d) => ({
@@ -353,9 +446,15 @@ export function AdminPanelModal({
     }
 
     let unsubOverrides: (() => void) | undefined;
-    if (user.email === BOOTSTRAPPED_ADMIN_EMAIL) {
+    if (isSuper || isIntlIdentity) {
+      const overridesQuery = isSuper
+        ? collection(db, 'restaurantCommissions')
+        : query(
+            collection(db, 'restaurantCommissions'),
+            where('cityId', '!=', TURKEY_CITY_ID)
+          );
       unsubOverrides = onSnapshot(
-        collection(db, 'restaurantCommissions'),
+        overridesQuery,
         (snap) => {
           setRestaurantOverrides(
             snap.docs.map((d) => ({
@@ -381,13 +480,72 @@ export function AdminPanelModal({
       if (unsubMembers) unsubMembers();
       if (unsubOverrides) unsubOverrides();
     };
-  }, [isOpen, isAdminAuthorized, user]);
+  }, [isOpen, adminScope, user]);
 
-  const isBootstrappedAdminUser = user?.email === BOOTSTRAPPED_ADMIN_EMAIL;
+  const canBulkListMembers =
+    isBootstrappedAdminUser || isHardcodedNonTurkeyAdmin(user);
+
+  const scopedHubs = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? CITY_HUBS.filter((h) => !isTurkeyCityId(h.id))
+        : CITY_HUBS,
+    [isNonTurkeyScope]
+  );
+
+  const scopedCuratedDishCount = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? DISHES.filter((d) => !isTurkeyCityId(d.cityId)).length
+        : DISHES.length,
+    [isNonTurkeyScope]
+  );
+
+  const scopedOrders = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? orders.filter((o) => !isTurkeyCityId(o.cityId))
+        : orders,
+    [orders, isNonTurkeyScope]
+  );
+
+  const scopedRestaurants = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? restaurants.filter((r) => !isTurkeyCityId(r.cityId))
+        : restaurants,
+    [restaurants, isNonTurkeyScope]
+  );
+
+  const scopedDishes = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? dishes.filter((d) => !isTurkeyCityId(d.cityId))
+        : dishes,
+    [dishes, isNonTurkeyScope]
+  );
+
+  const scopedMembers = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? members.filter((m) => !isTurkeyCityId(m.defaultCityId))
+        : members,
+    [members, isNonTurkeyScope]
+  );
+
+  const scopedOverrides = useMemo(
+    () =>
+      isNonTurkeyScope
+        ? restaurantOverrides.filter(
+            (ov) => !isTurkeyCityId(ov.cityId)
+          )
+        : restaurantOverrides,
+    [restaurantOverrides, isNonTurkeyScope]
+  );
 
   const memberOrderStats = useMemo(() => {
     const map = new Map<string, { count: number; totalTry: number }>();
-    for (const order of orders) {
+    for (const order of scopedOrders) {
       if (!order.ownerId) continue;
       const prev = map.get(order.ownerId) ?? { count: 0, totalTry: 0 };
       map.set(order.ownerId, {
@@ -396,11 +554,11 @@ export function AdminPanelModal({
       });
     }
     return map;
-  }, [orders]);
+  }, [scopedOrders]);
 
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLocaleLowerCase('tr');
-    return members.filter((m) => {
+    return scopedMembers.filter((m) => {
       if (memberCityFilter !== 'all' && m.defaultCityId !== memberCityFilter) {
         return false;
       }
@@ -423,11 +581,11 @@ export function AdminPanelModal({
       }
       return true;
     });
-  }, [members, memberSearch, memberCityFilter]);
+  }, [scopedMembers, memberSearch, memberCityFilter]);
 
   const filteredRestaurants = useMemo(() => {
     const q = restSearch.trim().toLocaleLowerCase('tr');
-    return restaurants.filter((r) => {
+    return scopedRestaurants.filter((r) => {
       if (restStatusFilter !== 'all' && r.status !== restStatusFilter) {
         return false;
       }
@@ -437,11 +595,11 @@ export function AdminPanelModal({
       }
       return true;
     });
-  }, [restaurants, restSearch, restStatusFilter]);
+  }, [scopedRestaurants, restSearch, restStatusFilter]);
 
   const filteredDishes = useMemo(() => {
     const q = dishSearch.trim().toLocaleLowerCase('tr');
-    return dishes.filter((d) => {
+    return scopedDishes.filter((d) => {
       if (dishCityFilter !== 'all' && d.cityId !== dishCityFilter) return false;
       if (q) {
         const text = `${d.name} ${d.restaurantName} ${d.cityName} ${d.category}`.toLocaleLowerCase('tr');
@@ -449,36 +607,59 @@ export function AdminPanelModal({
       }
       return true;
     });
-  }, [dishes, dishSearch, dishCityFilter]);
+  }, [scopedDishes, dishSearch, dishCityFilter]);
 
   const totalOrderVolumeTry = useMemo(
-    () => orders.reduce((sum, o) => sum + o.totalTry, 0),
-    [orders]
+    () => scopedOrders.reduce((sum, o) => sum + o.totalTry, 0),
+    [scopedOrders]
   );
 
   const totalPlatformCommissionTry = useMemo(
     () =>
-      orders.reduce((sum, o) => {
+      scopedOrders.reduce((sum, o) => {
         if (o.commissionTry !== undefined || o.serviceFeeTry !== undefined) {
           return sum + (o.commissionTry ?? 0) + (o.serviceFeeTry ?? 0);
         }
         const netFood = Math.max(0, o.subtotalTry - o.discountTry);
+        const orderConfig = !isTurkeyCityId(o.cityId)
+          ? nonTurkeyCommissionConfig ?? commissionConfig
+          : commissionConfig;
         const est = calculateOrderCommissionBreakdown({
           netSubtotalTry: netFood,
           deliveryFeeTry: o.deliveryFeeTry,
-          config: commissionConfig,
+          config: orderConfig,
         });
         return sum + est.commissionTry;
       }, 0),
-    [orders, commissionConfig]
+    [scopedOrders, commissionConfig, nonTurkeyCommissionConfig]
   );
+
+  const restaurantCityLookup = useMemo(() => {
+    const map = new Map<string, Exclude<CityId, 'all'>>();
+    for (const d of [...DISHES, ...EXTRA_RESTAURANT_DISHES]) {
+      const key = d.restaurantName.toLocaleLowerCase('tr');
+      if (!map.has(key)) map.set(key, d.cityId);
+    }
+    for (const r of restaurants) {
+      map.set(r.name.toLocaleLowerCase('tr'), r.cityId);
+    }
+    return map;
+  }, [restaurants]);
 
   const selectableRestaurantNames = useMemo(() => {
     const names = new Set<string>();
-    for (const r of restaurants) names.add(r.name);
-    for (const name of Object.keys(CURATED_RESTAURANT_META)) names.add(name);
+    for (const r of scopedRestaurants) names.add(r.name);
+    for (const name of Object.keys(CURATED_RESTAURANT_META)) {
+      const cid = restaurantCityLookup.get(name.toLocaleLowerCase('tr'));
+      if (isNonTurkeyScope && isTurkeyCityId(cid)) continue;
+      names.add(name);
+    }
+    for (const d of EXTRA_RESTAURANT_DISHES) {
+      if (isNonTurkeyScope && isTurkeyCityId(d.cityId)) continue;
+      names.add(d.restaurantName);
+    }
     return Array.from(names).sort((a, b) => a.localeCompare(b, 'tr'));
-  }, [restaurants]);
+  }, [scopedRestaurants, isNonTurkeyScope, restaurantCityLookup]);
 
   const draftCommissionConfig = useMemo<CommissionConfig>(
     () =>
@@ -604,7 +785,16 @@ export function AdminPanelModal({
 
     const uid = sanitizeText(newAdminUid, 128);
     const email = sanitizeText(newAdminEmail, VALIDATION_BOUNDS.emailMax);
-    const note = sanitizeText(newAdminNote || 'Platform Yöneticisi', 100);
+    const targetScope: AdminRegionScope = isNonTurkeyScope
+      ? 'non_turkey'
+      : newAdminScope;
+    const note = sanitizeText(
+      newAdminNote ||
+        (targetScope === 'non_turkey'
+          ? 'Bölge Yöneticisi (TR Harici)'
+          : 'Platform Yöneticisi'),
+      100
+    );
 
     if (!VALIDATION_BOUNDS.idPattern.test(uid) || uid.length < 3) {
       setAdminActionErr('Geçerli bir Firebase Kullanıcı UID değeri girin.');
@@ -620,25 +810,34 @@ export function AdminPanelModal({
         uid,
         email,
         note,
+        regionScope: targetScope,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
       setNewAdminUid('');
       setNewAdminEmail('');
       setNewAdminNote('');
-      setAdminActionMsg(`${email} yönetici listesine eklendi.`);
+      setAdminActionMsg(
+        `${email} (${targetScope === 'non_turkey' ? 'Türkiye Harici' : 'Tüm Bölgeler'}) yönetici listesine eklendi.`
+      );
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `admins/${uid}`);
     }
   };
 
-  const handleRemoveAdmin = async (adminId: string) => {
+  const handleRemoveAdmin = async (adm: AdminUserRecord) => {
+    if (isNonTurkeyScope && adm.regionScope !== 'non_turkey') {
+      setAdminActionErr(
+        'Yalnızca Türkiye harici bölge yöneticisi yetkilerini kaldırabilirsiniz.'
+      );
+      return;
+    }
     try {
-      await deleteDoc(doc(db, 'admins', adminId));
+      await deleteDoc(doc(db, 'admins', adm.id));
       setConfirmDeleteId(null);
       setAdminActionMsg('Yönetici yetkisi kaldırıldı.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `admins/${adminId}`);
+      handleFirestoreError(error, OperationType.DELETE, `admins/${adm.id}`);
     }
   };
 
@@ -660,6 +859,12 @@ export function AdminPanelModal({
         ...(snap.data() as MemberProfile),
         ownerId: (snap.data() as MemberProfile).ownerId || snap.id,
       };
+      if (isNonTurkeyScope && isTurkeyCityId(fetched.defaultCityId)) {
+        setMemberLookupError(
+          'Bu üye Türkiye bölgesine kayıtlıdır; yetki kapsamınız Türkiye harici bölgelerle sınırlıdır.'
+        );
+        return;
+      }
       setMembers((prev) => {
         const others = prev.filter((m) => m.ownerId !== fetched.ownerId);
         return [fetched, ...others];
@@ -676,6 +881,10 @@ export function AdminPanelModal({
     setCommErr('');
     setAdminActionMsg('');
 
+    const targetSettingId = isNonTurkeyScope
+      ? 'commission_non_turkey'
+      : commissionTarget;
+
     const sanitized = sanitizeCommissionConfig({
       commissionMode: commMode,
       restaurantCommissionPct: Number(commPct),
@@ -687,7 +896,7 @@ export function AdminPanelModal({
     });
 
     const updaterEmail = sanitizeText(
-      user.email || BOOTSTRAPPED_ADMIN_EMAIL,
+      user.email || REGIONAL_NON_TURKEY_ADMIN_EMAIL,
       VALIDATION_BOUNDS.emailMax
     );
     const safeUpdaterEmail =
@@ -697,7 +906,7 @@ export function AdminPanelModal({
 
     setCommSaving(true);
     try {
-      await setDoc(doc(db, 'platformSettings', 'commission'), {
+      await setDoc(doc(db, 'platformSettings', targetSettingId), {
         commissionMode: sanitized.commissionMode,
         restaurantCommissionPct: sanitized.restaurantCommissionPct,
         fixedCommissionTry: sanitized.fixedCommissionTry,
@@ -708,19 +917,24 @@ export function AdminPanelModal({
         updatedByEmail: safeUpdaterEmail,
         updatedAt: serverTimestamp(),
       });
-      onCommissionConfigUpdated?.({
+      const updatedObj: CommissionConfig = {
         ...sanitized,
         updatedByEmail: safeUpdaterEmail,
-      });
+      };
+      if (targetSettingId === 'commission_non_turkey') {
+        onNonTurkeyCommissionConfigUpdated?.(updatedObj);
+      } else {
+        onCommissionConfigUpdated?.(updatedObj);
+      }
       setAdminActionMsg(
-        `Komisyon politikası güncellendi (${formatCommissionPolicySummary(sanitized)}).`
+        `${targetSettingId === 'commission_non_turkey' ? 'Türkiye harici bölge komisyonu' : 'Genel platform komisyonu'} güncellendi (${formatCommissionPolicySummary(sanitized)}).`
       );
     } catch (error) {
       setCommErr('Komisyon ayarları kaydedilirken bir hata oluştu.');
       handleFirestoreError(
         error,
         OperationType.WRITE,
-        'platformSettings/commission'
+        `platformSettings/${targetSettingId}`
       );
     } finally {
       setCommSaving(false);
@@ -735,6 +949,17 @@ export function AdminPanelModal({
     const cleanRestName = sanitizeText(overrideRestName, 80);
     if (cleanRestName.length < 2) {
       setOverrideErr('Lütfen geçerli bir restoran adı seçin veya yazın.');
+      return;
+    }
+
+    const matchedCityId = restaurantCityLookup.get(
+      cleanRestName.toLocaleLowerCase('tr')
+    );
+    const resolvedCityId = matchedCityId ?? overrideCityId;
+    if (isNonTurkeyScope && isTurkeyCityId(resolvedCityId)) {
+      setOverrideErr(
+        'Türkiye ("İstanbul") restoranları yetki kapsamınız dışındadır; lütfen Türkiye harici 196 ülkeden bir restoran seçin.'
+      );
       return;
     }
 
@@ -753,6 +978,7 @@ export function AdminPanelModal({
     try {
       await setDoc(doc(db, 'restaurantCommissions', restKey), {
         restaurantName: cleanRestName,
+        cityId: resolvedCityId,
         commissionMode: overrideMode,
         restaurantCommissionPct: pct,
         fixedCommissionTry: fixed,
@@ -765,6 +991,7 @@ export function AdminPanelModal({
           {
             id: restKey,
             restaurantName: cleanRestName,
+            cityId: resolvedCityId,
             commissionMode: overrideMode,
             restaurantCommissionPct: pct,
             fixedCommissionTry: fixed,
@@ -790,12 +1017,14 @@ export function AdminPanelModal({
     }
   };
 
-  const handleDeleteRestaurantOverride = async (override: RestaurantCommissionOverride) => {
+  const handleDeleteRestaurantOverride = async (
+    override: RestaurantCommissionOverride
+  ) => {
     try {
       await deleteDoc(doc(db, 'restaurantCommissions', override.id));
       setRestaurantOverrides((prev) => prev.filter((o) => o.id !== override.id));
       setAdminActionMsg(
-        `"${override.restaurantName}" özel komisyonu kaldırıldı; platform standardı geçerli.`
+        `"${override.restaurantName}" özel komisyonu kaldırıldı; bölge standardı geçerli.`
       );
     } catch (error) {
       handleFirestoreError(
@@ -847,6 +1076,10 @@ export function AdminPanelModal({
                 <span className="text-[#8A8780] hidden sm:inline">/</span>
                 <span className="text-[#141413] font-medium hidden sm:inline whitespace-nowrap">
                   {sectionTitleMap[section]}
+                </span>
+                <span className="hidden lg:inline-flex items-center gap-1.5 ml-2 px-2.5 py-0.5 rounded-md bg-[#FAF9F7] border border-[#E6E4DF] text-[11px] font-medium text-[#141413] whitespace-nowrap">
+                  <Globe className="w-3 h-3 text-[#D9043D]" />
+                  {getAdminScopeLabel(adminScope)}
                 </span>
               </>
             )}
@@ -978,7 +1211,7 @@ export function AdminPanelModal({
                   <span>Üyeler</span>
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {members.length}
+                  {scopedMembers.length}
                 </span>
               </button>
 
@@ -996,7 +1229,7 @@ export function AdminPanelModal({
                   <span>Restoranlar</span>
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {restaurants.length}
+                  {scopedRestaurants.length}
                 </span>
               </button>
 
@@ -1014,7 +1247,7 @@ export function AdminPanelModal({
                   <span>Menü Kataloğu</span>
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {dishes.length}
+                  {scopedDishes.length}
                 </span>
               </button>
 
@@ -1032,7 +1265,7 @@ export function AdminPanelModal({
                   <span>Siparişler & Yetkiler</span>
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {orders.length}
+                  {scopedOrders.length}
                 </span>
               </button>
 
@@ -1050,9 +1283,9 @@ export function AdminPanelModal({
                   <span>Komisyon & Ücretler</span>
                 </span>
                 <span className="font-mono tabular-nums text-[11px] opacity-80">
-                  {commissionConfig.commissionMode === 'fixed'
-                    ? `${commissionConfig.fixedCommissionTry}₺`
-                    : `%${commissionConfig.restaurantCommissionPct}`}
+                  {activeEditedCommissionConfig.commissionMode === 'fixed'
+                    ? `${activeEditedCommissionConfig.fixedCommissionTry}₺`
+                    : `%${activeEditedCommissionConfig.restaurantCommissionPct}`}
                 </span>
               </button>
 
@@ -1088,6 +1321,20 @@ export function AdminPanelModal({
                 </div>
               )}
 
+              {isNonTurkeyScope && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-white border border-[#E6E4DF] rounded-xl px-4 py-3 text-xs">
+                  <div className="flex items-center gap-2 text-[#141413]">
+                    <Globe className="w-4 h-4 text-[#D9043D] shrink-0" />
+                    <span>
+                      <strong>Yetki Kapsamı: Türkiye Harici Tüm Bölgeler (196 Ülke)</strong>{' '}
+                      <span className="text-[#575550]">
+                        — Üyeler, restoranlar, menüler, siparişler, bölgesel komisyonlar ve canlı destek dahil tüm uluslararası işlemlere tam yetkilisiniz. Türkiye bölgesi ayrı tutulur.
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {section === 'overview' && (
                 <div className="space-y-6">
                   {/* Single-elevation 6-column KPI bar */}
@@ -1101,7 +1348,7 @@ export function AdminPanelModal({
                         Uygulama Üyeleri
                       </p>
                       <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-                        {members.length}
+                        {scopedMembers.length}
                       </p>
                       <p className="text-[11px] text-[#D9043D] mt-1 font-medium">
                         Üyeleri görüntüle →
@@ -1112,10 +1359,10 @@ export function AdminPanelModal({
                         Kayıtlı Üye Restoran
                       </p>
                       <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-                        {restaurants.length}
+                        {scopedRestaurants.length}
                       </p>
                       <p className="text-[11px] text-[#16A34A] mt-1 font-mono tabular-nums">
-                        {restaurants.filter((r) => r.status === 'active').length} yayında
+                        {scopedRestaurants.filter((r) => r.status === 'active').length} yayında
                       </p>
                     </div>
                     <div className="p-5">
@@ -1123,10 +1370,10 @@ export function AdminPanelModal({
                         Üye Menü Tabakları
                       </p>
                       <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-                        {dishes.length}
+                        {scopedDishes.length}
                       </p>
                       <p className="text-[11px] text-[#575550] mt-1 font-mono tabular-nums">
-                        +{DISHES.length} kürasyon tabak
+                        +{scopedCuratedDishCount} kürasyon tabak
                       </p>
                     </div>
                     <div className="p-5">
@@ -1134,10 +1381,10 @@ export function AdminPanelModal({
                         Aktif Sipariş Kuyruğu
                       </p>
                       <p className="font-mono tabular-nums text-2xl font-semibold text-[#141413]">
-                        {orders.filter((o) => o.status !== 'delivered').length}
+                        {scopedOrders.filter((o) => o.status !== 'delivered').length}
                       </p>
                       <p className="text-[11px] text-[#575550] mt-1 font-mono tabular-nums">
-                        Toplam {orders.length} sipariş
+                        Toplam {scopedOrders.length} sipariş
                       </p>
                     </div>
                     <div className="p-5">
@@ -1148,7 +1395,7 @@ export function AdminPanelModal({
                         {Math.round(totalOrderVolumeTry).toLocaleString('tr-TR')} ₺
                       </p>
                       <p className="text-[11px] text-[#575550] mt-1">
-                        {CITY_HUBS.length} ülke · 6 kıta
+                        {scopedHubs.length} ülke · 6 kıta
                       </p>
                     </div>
                     <button
@@ -1163,7 +1410,12 @@ export function AdminPanelModal({
                         {Math.round(totalPlatformCommissionTry).toLocaleString('tr-TR')} ₺
                       </p>
                       <p className="text-[11px] text-[#575550] mt-1 font-medium truncate">
-                        {formatCommissionPolicySummary(commissionConfig)} →
+                        {formatCommissionPolicySummary(
+                          isNonTurkeyScope
+                            ? nonTurkeyCommissionConfig ?? commissionConfig
+                            : commissionConfig
+                        )}{' '}
+                        →
                       </p>
                     </button>
                   </div>
@@ -1173,10 +1425,12 @@ export function AdminPanelModal({
                     <div className="px-5 py-4 border-b border-[#E6E4DF] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h3 className="font-display text-base font-semibold text-[#141413]">
-                          Küresel Teslimat Ağı & Ülke Operasyon Tablosu ({CITY_HUBS.length} Ülke)
+                          {isNonTurkeyScope
+                            ? `Uluslararası Teslimat Ağı — Türkiye Harici (${scopedHubs.length} Ülke)`
+                            : `Küresel Teslimat Ağı & Ülke Operasyon Tablosu (${scopedHubs.length} Ülke)`}
                         </h3>
                         <p className="text-xs text-[#575550] mt-0.5">
-                          Tüm kıtalardaki ülke merkezleri, yerel para birimleri ve teslimat eşikleri.
+                          Yetkili olduğunuz kıtalardaki ülke merkezleri, yerel para birimleri ve teslimat eşikleri.
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1195,7 +1449,7 @@ export function AdminPanelModal({
                           aria-label="Kıta filtresi"
                           className="px-3 py-1.5 min-h-[34px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
                         >
-                          <option value="all">Tüm Kıtalar ({CITY_HUBS.length})</option>
+                          <option value="all">Tüm Kıtalar ({scopedHubs.length})</option>
                           {CONTINENTS.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.label}
@@ -1223,7 +1477,7 @@ export function AdminPanelModal({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E6E4DF]">
-                          {CITY_HUBS.filter((hub) => {
+                          {scopedHubs.filter((hub) => {
                             if (
                               hubContinentFilter !== 'all' &&
                               hub.continent !== hubContinentFilter
@@ -1240,11 +1494,11 @@ export function AdminPanelModal({
                             }
                             return true;
                           }).map((hub) => {
-                            const hubRestCount = restaurants.filter(
+                            const hubRestCount = scopedRestaurants.filter(
                               (r) => r.cityId === hub.id
                             ).length;
                             const hubDishCount =
-                              dishes.filter((d) => d.cityId === hub.id).length +
+                              scopedDishes.filter((d) => d.cityId === hub.id).length +
                               DISHES.filter((d) => d.cityId === hub.id).length;
 
                             return (
@@ -1282,10 +1536,10 @@ export function AdminPanelModal({
                   <div className="grid grid-cols-2 sm:grid-cols-4 bg-white border border-[#E6E4DF] rounded-xl divide-y sm:divide-y-0 sm:divide-x divide-[#E6E4DF]">
                     <div className="p-4">
                       <p className="text-[11px] text-[#575550]">
-                        Toplam Kayıtlı Üye
+                        {isNonTurkeyScope ? 'Bölge Kayıtlı Üye' : 'Toplam Kayıtlı Üye'}
                       </p>
                       <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
-                        {members.length}
+                        {scopedMembers.length}
                       </p>
                     </div>
                     <div className="p-4">
@@ -1301,7 +1555,7 @@ export function AdminPanelModal({
                         Telefonu Kayıtlı
                       </p>
                       <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
-                        {members.filter((m) => Boolean(m.phone?.trim())).length}
+                        {scopedMembers.filter((m) => Boolean(m.phone?.trim())).length}
                       </p>
                     </div>
                     <div className="p-4">
@@ -1310,7 +1564,7 @@ export function AdminPanelModal({
                       </p>
                       <p className="font-mono tabular-nums text-xl font-semibold text-[#141413] mt-0.5">
                         {
-                          members.filter((m) =>
+                          scopedMembers.filter((m) =>
                             Boolean(m.defaultAddress?.trim())
                           ).length
                         }
@@ -1318,15 +1572,10 @@ export function AdminPanelModal({
                     </div>
                   </div>
 
-                  {!isBootstrappedAdminUser && (
+                  {!canBulkListMembers && (
                     <div className="bg-white border border-[#E6E4DF] rounded-xl p-4 space-y-3">
                       <p className="text-xs text-[#575550]">
-                        Tüm üyelerin toplu listelenmesi yalnızca ana yönetici (
-                        <span className="font-mono text-[#141413]">
-                          {BOOTSTRAPPED_ADMIN_EMAIL}
-                        </span>
-                        ) hesabına açıktır. Yardımcı yönetici olarak belirli bir
-                        üyeyi UID ile sorgulayabilirsiniz:
+                        Yetkili kapsamınızdaki belirli bir üyeyi UID ile sorgulayabilirsiniz:
                       </p>
                       <form
                         onSubmit={handleLookupMemberByUid}
@@ -1376,7 +1625,12 @@ export function AdminPanelModal({
                     >
                       <CountrySelectOptions
                         includeAllOption
-                        allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                        excludeTurkey={isNonTurkeyScope}
+                        allLabel={
+                          isNonTurkeyScope
+                            ? `Türkiye Harici Ülkeler (${scopedHubs.length})`
+                            : `Tüm Ülkeler (${CITY_HUBS.length})`
+                        }
                       />
                     </select>
                   </div>
@@ -1429,6 +1683,10 @@ export function AdminPanelModal({
                               ) ?? { count: 0, totalTry: 0 };
                               const isPrimaryAdmin =
                                 member.email === BOOTSTRAPPED_ADMIN_EMAIL;
+                              const isPermanentIntlAdmin =
+                                member.ownerId === REGIONAL_NON_TURKEY_ADMIN_UID ||
+                                member.email?.toLowerCase() ===
+                                  REGIONAL_NON_TURKEY_ADMIN_EMAIL;
                               const isDelegatedAdmin = admins.some(
                                 (a) => a.uid === member.ownerId
                               );
@@ -1524,6 +1782,10 @@ export function AdminPanelModal({
                                       <span className="inline-flex items-center px-2 py-1 rounded-md bg-[#D9043D]/10 text-[#D9043D] text-[11px] font-medium">
                                         Ana Yönetici
                                       </span>
+                                    ) : isPermanentIntlAdmin ? (
+                                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-medium">
+                                        TR Harici Yetkili
+                                      </span>
                                     ) : isDelegatedAdmin ? (
                                       <span className="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 text-[11px] font-medium">
                                         Yönetici
@@ -1538,6 +1800,9 @@ export function AdminPanelModal({
                                           );
                                           setNewAdminNote(
                                             member.displayName || 'Yönetici'
+                                          );
+                                          setNewAdminScope(
+                                            isNonTurkeyScope ? 'non_turkey' : 'all'
                                           );
                                           setSection('orders_admins');
                                         }}
@@ -1777,7 +2042,12 @@ export function AdminPanelModal({
                     >
                       <CountrySelectOptions
                         includeAllOption
-                        allLabel={`Tüm Ülkeler (${CITY_HUBS.length})`}
+                        excludeTurkey={isNonTurkeyScope}
+                        allLabel={
+                          isNonTurkeyScope
+                            ? `Türkiye Harici Ülkeler (${scopedHubs.length})`
+                            : `Tüm Ülkeler (${CITY_HUBS.length})`
+                        }
                       />
                     </select>
                   </div>
@@ -1911,7 +2181,7 @@ export function AdminPanelModal({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#E6E4DF]">
-                          {orders.map((order) => (
+                          {scopedOrders.map((order) => (
                             <tr key={order.id} className="hover:bg-[#FAF9F7]">
                               <td className="py-3 px-4">
                                 <p className="font-mono tabular-nums font-semibold text-[#141413]">
@@ -1996,6 +2266,30 @@ export function AdminPanelModal({
                                     Tamamlandı
                                   </span>
                                 )}
+                                {onDeleteOrder &&
+                                  (confirmDeleteId === `ord_${order.id}` ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        void onDeleteOrder(order);
+                                        setConfirmDeleteId(null);
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-md bg-[#DC2626] text-white font-medium cursor-pointer"
+                                    >
+                                      Silmeyi Onayla
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setConfirmDeleteId(`ord_${order.id}`)
+                                      }
+                                      aria-label={`#${order.id} siparişini sil`}
+                                      className="p-1.5 rounded-md border border-[#E6E4DF] text-[#DC2626] hover:bg-red-50 cursor-pointer align-middle"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  ))}
                               </td>
                             </tr>
                           ))}
@@ -2011,8 +2305,9 @@ export function AdminPanelModal({
                         Yönetici Erişim Yetkileri
                       </h3>
                       <p className="text-xs text-[#575550] mt-0.5">
-                        Ana yönetici (<span className="font-mono">{BOOTSTRAPPED_ADMIN_EMAIL}</span>)
-                        dışında yardımcı yönetici UID tanımlayabilirsiniz.
+                        {isNonTurkeyScope
+                          ? 'Türkiye harici 196 ülke operasyonları için bölgesel yardımcı yönetici UID tanımlayabilirsiniz.'
+                          : `Ana yönetici (${BOOTSTRAPPED_ADMIN_EMAIL}) veya Türkiye harici bölge yetkilisi olarak yönetici UID tanımlayabilirsiniz.`}
                       </p>
                     </div>
 
@@ -2032,7 +2327,7 @@ export function AdminPanelModal({
                         onChange={(e) => setNewAdminUid(e.target.value)}
                         placeholder="Firebase UID"
                         required
-                        className="sm:col-span-4 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-xs font-mono"
+                        className="sm:col-span-3 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-xs font-mono"
                       />
                       <input
                         type="email"
@@ -2040,15 +2335,31 @@ export function AdminPanelModal({
                         onChange={(e) => setNewAdminEmail(e.target.value)}
                         placeholder="E-posta adresi"
                         required
-                        className="sm:col-span-4 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-xs"
+                        className="sm:col-span-3 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-xs"
                       />
                       <input
                         type="text"
                         value={newAdminNote}
                         onChange={(e) => setNewAdminNote(e.target.value)}
-                        placeholder="Rol notu (Örn: Operasyon)"
+                        placeholder="Rol notu"
                         className="sm:col-span-2 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] text-xs"
                       />
+                      <select
+                        value={isNonTurkeyScope ? 'non_turkey' : newAdminScope}
+                        disabled={isNonTurkeyScope}
+                        onChange={(e) =>
+                          setNewAdminScope(e.target.value as AdminRegionScope)
+                        }
+                        aria-label="Yönetici yetki bölgesi"
+                        className="sm:col-span-2 px-3 py-2 min-h-[40px] rounded-lg border border-[#E6E4DF] bg-white text-xs disabled:bg-[#FAF9F7] disabled:text-[#575550]"
+                      >
+                        {!isNonTurkeyScope && (
+                          <option value="all">Tüm Dünya + TR (197)</option>
+                        )}
+                        <option value="non_turkey">
+                          Türkiye Harici (196 Ülke)
+                        </option>
+                      </select>
                       <button
                         type="submit"
                         className="sm:col-span-2 min-h-[40px] px-4 py-2 rounded-lg bg-[#D9043D] text-white text-xs font-medium hover:bg-[#B80032] cursor-pointer"
@@ -2057,9 +2368,46 @@ export function AdminPanelModal({
                       </button>
                     </form>
 
-                    {admins.length > 0 && (
-                      <div className="border-t border-[#E6E4DF] pt-4 space-y-2">
-                        {admins.map((adm) => (
+                    {/* Core permanent RBAC directory + delegated admins */}
+                    <div className="border-t border-[#E6E4DF] pt-4 space-y-2">
+                      {!isNonTurkeyScope && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs py-1.5">
+                          <div>
+                            <span className="font-medium text-[#141413]">
+                              {BOOTSTRAPPED_ADMIN_EMAIL}
+                            </span>
+                            <span className="text-[#575550] ml-2">
+                              · Ana Yönetici (Tam Yetki: Türkiye + 196 Ülke)
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-medium text-[#D9043D]">
+                            Sabit Ana Hesap
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs py-1.5">
+                        <div>
+                          <span className="font-medium text-[#141413]">
+                            {REGIONAL_NON_TURKEY_ADMIN_EMAIL}
+                          </span>
+                          <span className="text-[#575550] ml-2">
+                            · Türkiye Harici Tüm Bölgeler Yetkilisi (
+                            {REGIONAL_NON_TURKEY_ADMIN_UID})
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-medium text-[#16A34A]">
+                          196 Ülke Tam Erişim
+                        </span>
+                      </div>
+
+                      {admins.map((adm) => {
+                        const scope = resolveAdminDocScope(adm);
+                        const canRemove =
+                          isGlobalAdminUser ||
+                          (isNonTurkeyScope &&
+                            scope === 'non_turkey' &&
+                            adm.uid !== user?.uid);
+                        return (
                           <div
                             key={adm.id}
                             className="flex items-center justify-between gap-3 text-xs py-1.5"
@@ -2069,20 +2417,25 @@ export function AdminPanelModal({
                                 {adm.email}
                               </span>
                               <span className="text-[#575550] ml-2">
-                                · {adm.note} ({adm.uid})
+                                · {adm.note} ({adm.uid}) ·{' '}
+                                {scope === 'non_turkey'
+                                  ? 'Türkiye Harici (196 Ülke)'
+                                  : 'Tüm Dünya + TR'}
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAdmin(adm.id)}
-                              className="text-[#DC2626] hover:underline cursor-pointer"
-                            >
-                              Kaldır
-                            </button>
+                            {canRemove && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAdmin(adm)}
+                                className="text-[#DC2626] hover:underline cursor-pointer"
+                              >
+                                Kaldır
+                              </button>
+                            )}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -2098,16 +2451,51 @@ export function AdminPanelModal({
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-[#E6E4DF]">
                         <div>
                           <h3 className="font-display text-base font-semibold text-[#141413]">
-                            Platform Komisyon & Ücret Politikası
+                            {isNonTurkeyScope ||
+                            commissionTarget === 'commission_non_turkey'
+                              ? 'Türkiye Harici Bölgeler Komisyon Politikası (196 Ülke)'
+                              : 'Platform Komisyon & Ücret Politikası'}
                           </h3>
                           <p className="text-xs text-[#575550] mt-0.5">
-                            Restoran komisyonu ve müşteri hizmet bedelini belirleyin. Teslimatlar yalnızca restoran kuryesiyle yapılır.
+                            {isNonTurkeyScope ||
+                            commissionTarget === 'commission_non_turkey'
+                              ? 'Türkiye harici tüm ülkelerdeki yeni siparişlerde geçerli komisyon ve hizmet bedeli ayarları.'
+                              : 'Restoran komisyonu ve müşteri hizmet bedelini belirleyin. Teslimatlar yalnızca restoran kuryesiyle yapılır.'}
                           </p>
                         </div>
                         <span className="font-mono tabular-nums text-xs font-semibold text-[#D9043D] shrink-0">
                           {formatCommissionPolicySummary(draftCommissionConfig)}
                         </span>
                       </div>
+
+                      {isGlobalAdminUser && (
+                        <div className="grid grid-cols-2 gap-1 p-1 bg-[#EFECE6] rounded-lg">
+                          <button
+                            type="button"
+                            onClick={() => setCommissionTarget('commission')}
+                            className={`py-2 px-2.5 rounded-md text-xs font-medium cursor-pointer ${
+                              commissionTarget === 'commission'
+                                ? 'bg-white text-[#141413]'
+                                : 'text-[#575550]'
+                            }`}
+                          >
+                            Genel Standart (TR + Dünya)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCommissionTarget('commission_non_turkey')
+                            }
+                            className={`py-2 px-2.5 rounded-md text-xs font-medium cursor-pointer ${
+                              commissionTarget === 'commission_non_turkey'
+                                ? 'bg-white text-[#141413]'
+                                : 'text-[#575550]'
+                            }`}
+                          >
+                            Türkiye Harici (196 Ülke)
+                          </button>
+                        </div>
+                      )}
 
                       {/* Quick Presets */}
                       <div className="space-y-1.5">
@@ -2427,7 +2815,16 @@ export function AdminPanelModal({
                           type="text"
                           list="sofra-commission-restaurants"
                           value={overrideRestName}
-                          onChange={(e) => setOverrideRestName(e.target.value)}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setOverrideRestName(val);
+                            const matched = restaurantCityLookup.get(
+                              val.trim().toLocaleLowerCase('tr')
+                            );
+                            if (matched && (!isNonTurkeyScope || !isTurkeyCityId(matched))) {
+                              setOverrideCityId(matched);
+                            }
+                          }}
                           placeholder="Seçin veya restoran adı yazın"
                           maxLength={80}
                           required
@@ -2438,6 +2835,24 @@ export function AdminPanelModal({
                             <option key={name} value={name} />
                           ))}
                         </datalist>
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-medium text-[#575550] mb-1">
+                          Ülke Bölgesi
+                        </label>
+                        <select
+                          value={overrideCityId}
+                          onChange={(e) =>
+                            setOverrideCityId(
+                              e.target.value as Exclude<CityId, 'all'>
+                            )
+                          }
+                          aria-label="Özel komisyon restoran ülkesi"
+                          className="w-full px-2.5 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] bg-white text-xs"
+                        >
+                          <CountrySelectOptions excludeTurkey={isNonTurkeyScope} />
+                        </select>
                       </div>
 
                       <div className="sm:col-span-2">
@@ -2489,7 +2904,18 @@ export function AdminPanelModal({
                         />
                       </div>
 
-                      <div className="sm:col-span-2 flex items-end">
+                      <div className="sm:col-span-9">
+                        <input
+                          type="text"
+                          value={overrideNote}
+                          onChange={(e) => setOverrideNote(e.target.value)}
+                          placeholder="Anlaşma notu (opsiyonel, örn: Lansman iş ortağı %12 anlaşması)"
+                          maxLength={COMMISSION_BOUNDS.noteMax}
+                          className="w-full px-3 py-2 min-h-[38px] rounded-lg border border-[#E6E4DF] text-xs"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3 flex items-end">
                         <button
                           type="submit"
                           disabled={overrideSaving}
@@ -2498,20 +2924,9 @@ export function AdminPanelModal({
                           {overrideSaving ? 'Kaydediliyor...' : 'Tanım Ekle'}
                         </button>
                       </div>
-
-                      <div className="sm:col-span-12">
-                        <input
-                          type="text"
-                          value={overrideNote}
-                          onChange={(e) => setOverrideNote(e.target.value)}
-                          placeholder="Anlaşma notu (opsiyonel, örn: Lansman iş ortağı %12 anlaşması)"
-                          maxLength={COMMISSION_BOUNDS.noteMax}
-                          className="w-full px-3 py-2 min-h-[36px] rounded-lg border border-[#E6E4DF] text-xs"
-                        />
-                      </div>
                     </form>
 
-                    {restaurantOverrides.length > 0 ? (
+                    {scopedOverrides.length > 0 ? (
                       <div className="overflow-x-auto border border-[#E6E4DF] rounded-lg">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
@@ -2525,7 +2940,7 @@ export function AdminPanelModal({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#E6E4DF]">
-                            {restaurantOverrides.map((ov) => (
+                            {scopedOverrides.map((ov) => (
                               <tr key={ov.id} className="hover:bg-[#FAF9F7]">
                                 <td className="py-2.5 px-4 font-medium text-[#141413]">
                                   {ov.restaurantName}
@@ -2541,6 +2956,13 @@ export function AdminPanelModal({
                                     type="button"
                                     onClick={() => {
                                       setOverrideRestName(ov.restaurantName);
+                                      if (
+                                        ov.cityId &&
+                                        (!isNonTurkeyScope ||
+                                          !isTurkeyCityId(ov.cityId))
+                                      ) {
+                                        setOverrideCityId(ov.cityId);
+                                      }
                                       setOverrideMode(ov.commissionMode);
                                       setOverridePct(
                                         String(ov.restaurantCommissionPct)
@@ -2571,7 +2993,7 @@ export function AdminPanelModal({
                       </div>
                     ) : (
                       <p className="text-xs text-[#575550]">
-                        Henüz restorana özel tanımlanmış farklı bir komisyon oranı yok; tüm restoranlar için genel politika uygulanıyor.
+                        Henüz restorana özel tanımlanmış farklı bir komisyon oranı yok; bölge standart politikası uygulanıyor.
                       </p>
                     )}
                   </div>
@@ -2585,12 +3007,15 @@ export function AdminPanelModal({
                       Restoran & Kurye Canlı Destek Masası
                     </h3>
                     <p className="text-xs text-[#575550] mt-0.5">
-                      Aktif sipariş müşterilerinin restoran veya kurye kanalına gönderdiği mesajları gerçek zamanlı yanıtlayın.
+                      {isNonTurkeyScope
+                        ? 'Türkiye harici 196 ülkedeki aktif siparişlerin restoran ve kurye destek mesajlarını gerçek zamanlı yanıtlayın.'
+                        : 'Aktif sipariş müşterilerinin restoran veya kurye kanalına gönderdiği mesajları gerçek zamanlı yanıtlayın.'}
                     </p>
                   </div>
                   <SupportStaffInbox
-                    orders={orders}
+                    orders={scopedOrders}
                     enabled={isOpen && section === 'support'}
+                    regionScope={adminScope}
                     compactHeightClass="h-[62vh] max-h-[540px]"
                   />
                 </div>

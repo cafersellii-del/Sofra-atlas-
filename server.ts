@@ -185,6 +185,7 @@ interface SupportThreadRecord {
   restaurantName: string;
   courierName: string;
   customerName: string;
+  cityId?: string;
   cityName: string;
   neighborhood: string;
   orderStatus: SupportOrderStatus;
@@ -198,6 +199,7 @@ interface SupportOrderMetaInput {
   restaurantName?: string;
   courierName?: string;
   customerName?: string;
+  cityId?: string;
   cityName?: string;
   neighborhood?: string;
   orderStatus?: SupportOrderStatus;
@@ -276,6 +278,10 @@ function getOrCreateSupportThread(
       const cleaned = sanitizeChatString(meta.customerName, 80);
       if (cleaned) existing.customerName = cleaned;
     }
+    if (meta?.cityId) {
+      const cleaned = sanitizeChatString(meta.cityId, 32);
+      if (cleaned) existing.cityId = cleaned;
+    }
     if (meta?.cityName) {
       const cleaned = sanitizeChatString(meta.cityName, 60);
       if (cleaned) existing.cityName = cleaned;
@@ -290,11 +296,13 @@ function getOrCreateSupportThread(
     return existing;
   }
 
+  const cleanCityId = sanitizeChatString(meta?.cityId, 32);
   const created: SupportThreadRecord = {
     orderId,
     restaurantName: sanitizeChatString(meta?.restaurantName, 80) || 'Sofra Atlas Mutfağı',
     courierName: sanitizeChatString(meta?.courierName, 60) || 'Teslimat Kuryesi',
     customerName: sanitizeChatString(meta?.customerName, 80) || 'Müşteri',
+    ...(cleanCityId ? { cityId: cleanCityId } : {}),
     cityName: sanitizeChatString(meta?.cityName, 60) || 'İstanbul',
     neighborhood: sanitizeChatString(meta?.neighborhood, 60) || 'Merkez',
     orderStatus: validStatus ?? 'received',

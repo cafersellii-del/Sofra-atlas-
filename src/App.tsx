@@ -50,6 +50,11 @@ import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { GOOGLE_MAPS_API_KEY } from './lib/maps';
 import { LanguageProvider } from './i18n/LanguageContext';
 import {
+  isBootstrappedSuperAdmin,
+  isHardcodedNonTurkeyAdmin,
+  isTurkeyCityId,
+} from './utils/adminScope';
+import {
   calculateOrderCommissionBreakdown,
   COMMISSION_STORAGE_KEY,
   DEFAULT_COMMISSION_CONFIG,
@@ -91,6 +96,103 @@ function getNextStatus(current: OrderStatus): OrderStatus {
   const idx = STATUS_SEQUENCE.indexOf(current);
   if (idx === -1 || idx >= STATUS_SEQUENCE.length - 1) return 'delivered';
   return STATUS_SEQUENCE[idx + 1];
+}
+
+function mapFirestoreOrderDoc(
+  docId: string,
+  rawData: Record<string, unknown>
+): Order {
+  const data = rawData as {
+    ownerId: string;
+    orderNumber: string;
+    cityId: Exclude<CityId, 'all'>;
+    cityName: string;
+    neighborhood: string;
+    address: string;
+    customerName: string;
+    customerPhone: string;
+    restaurantName: string;
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
+    gatewayLabel: string;
+    transactionId: string;
+    authCode: string;
+    cardBrand: SavedCardRecord['brand'] | '';
+    cardLast4: string;
+    refundId: string;
+    deliveryPreferences: string[];
+    itemsSummary: string[];
+    subtotalTry: number;
+    discountTry: number;
+    deliveryFeeTry: number;
+    serviceFeeTry?: number;
+    commissionRatePct?: number;
+    commissionTry?: number;
+    restaurantNetTry?: number;
+    totalTry: number;
+    status: OrderStatus;
+    estimatedArrival: string;
+    courierName: string;
+    courierId?: string;
+    courierStatus?: Order['courierStatus'];
+  };
+  const normalizedCourierName =
+    !data.courierName || data.courierName === 'Kurye Bekleniyor'
+      ? data.restaurantName
+        ? `${data.restaurantName} Kuryesi`
+        : 'Restoran Kuryesi'
+      : data.courierName;
+  return {
+    id: data.orderNumber,
+    firestoreId: docId,
+    ownerId: data.ownerId,
+    createdAt: 'Kayıtlı Sipariş',
+    cityId: data.cityId,
+    cityName: data.cityName,
+    neighborhood: data.neighborhood,
+    address: data.address,
+    customerName: data.customerName,
+    customerPhone: data.customerPhone,
+    paymentMethod: data.paymentMethod,
+    paymentStatus: data.paymentStatus,
+    paymentDetails: data.transactionId
+      ? {
+          transactionId: data.transactionId,
+          authCode: data.authCode,
+          gatewayLabel: data.gatewayLabel,
+          paidAt: '',
+          cardBrand: data.cardBrand,
+          last4: data.cardLast4,
+          maskedCard:
+            data.cardBrand && data.cardLast4
+              ? `${data.cardBrand} •••• ${data.cardLast4}`
+              : data.gatewayLabel,
+          refundId: data.refundId || undefined,
+        }
+      : undefined,
+    deliveryPreferences: data.deliveryPreferences,
+    items: (data.itemsSummary ?? []).map((summary) => ({
+      dishName: summary,
+      restaurantName: data.restaurantName,
+      portionLabel: 'Standart',
+      extrasLabels: [],
+      quantity: 1,
+      lineTotalTry: 0,
+    })),
+    subtotalTry: data.subtotalTry,
+    discountTry: data.discountTry,
+    deliveryFeeTry: data.deliveryFeeTry,
+    serviceFeeTry: data.serviceFeeTry,
+    commissionRatePct: data.commissionRatePct,
+    commissionTry: data.commissionTry,
+    restaurantNetTry: data.restaurantNetTry,
+    totalTry: data.totalTry,
+    status: data.status,
+    estimatedArrival: data.estimatedArrival,
+    courierName: normalizedCourierName,
+    courierId: data.courierId ?? '',
+    courierStatus: data.courierStatus,
+  };
 }
 
 interface PendingCartAddition {
@@ -236,6 +338,10 @@ export default function App() {
     }
   });
 
+  const [nonTurkeyCommissionConfig, setNonTurkeyCommissionConfig] =
+    useState<CommissionConfig | null>(null);
+  const [adminFirestoreOrders, setAdminFirestoreOrders] = useState<Order[]>([]);
+
   const handleCommissionConfigUpdated = useCallback((next: CommissionConfig) => {
     const clean = sanitizeCommissionConfig(next);
     setCommissionConfig(clean);
@@ -245,6 +351,13 @@ export default function App() {
       // Ignore storage quota errors
     }
   }, []);
+
+  const handleNonTurkeyCommissionConfigUpdated = useCallback(
+    (next: CommissionConfig) => {
+      setNonTurkeyCommissionConfig(sanitizeCommissionConfig(next));
+    },
+    []
+  );
 
   const prevOrderStatusesRef = useRef<Record<string, OrderStatus>>(
     Object.fromEntries(orders.map((o) => [o.id, o.status]))
@@ -571,6 +684,41 @@ export default function App() {
     };
   }, [authReady, currentUser]);
 
+  // Subscribe to all (or non-Turkey) customer orders for verified admin identities
+  useEffect(() => {
+    if (!authReady || !currentUser || !currentUser.emailVerified) {
+      setAdminFirestoreOrders([]);
+      return;
+    }
+
+    const isSuper = isBootstrappedSuperAdmin(currentUser);
+    const isIntl = isHardcodedNonTurkeyAdmin(currentUser);
+    if (!isSuper && !isIntl) {
+      setAdminFirestoreOrders([]);
+      return;
+    }
+
+    const adminOrdersQuery = isSuper
+      ? collection(db, 'orders')
+      : query(collection(db, 'orders'), where('cityId', '!=', 'istanbul'));
+
+    const unsub = onSnapshot(
+      adminOrdersQuery,
+      (snap) => {
+        setAdminFirestoreOrders(
+          snap.docs.map((d) =>
+            mapFirestoreOrderDoc(d.id, d.data() as Record<string, unknown>)
+          )
+        );
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'orders');
+      }
+    );
+
+    return () => unsub();
+  }, [authReady, currentUser]);
+
   // Subscribe to active registered partner restaurants
   useEffect(() => {
     const restQuery = query(
@@ -615,7 +763,7 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Subscribe to platform-wide commission & fee policy
+  // Subscribe to platform-wide and non-Turkey regional commission policies
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'platformSettings', 'commission'),
@@ -639,7 +787,31 @@ export default function App() {
         );
       }
     );
-    return () => unsub();
+
+    const unsubNonTurkey = onSnapshot(
+      doc(db, 'platformSettings', 'commission_non_turkey'),
+      (snap) => {
+        if (!snap.exists()) {
+          setNonTurkeyCommissionConfig(null);
+          return;
+        }
+        setNonTurkeyCommissionConfig(
+          sanitizeCommissionConfig(snap.data() as Partial<CommissionConfig>)
+        );
+      },
+      (error) => {
+        handleFirestoreError(
+          error,
+          OperationType.GET,
+          'platformSettings/commission_non_turkey'
+        );
+      }
+    );
+
+    return () => {
+      unsub();
+      unsubNonTurkey();
+    };
   }, []);
 
   useEffect(() => {
@@ -1295,16 +1467,35 @@ export default function App() {
     }
   };
 
+  const mergedAdminOrders = useMemo(() => {
+    const byId = new Map<string, Order>();
+    for (const o of orders) {
+      byId.set(o.id, o);
+    }
+    for (const ao of adminFirestoreOrders) {
+      const existing = byId.get(ao.id);
+      byId.set(ao.id, {
+        ...ao,
+        createdAt: existing?.createdAt ?? ao.createdAt,
+        items: existing?.items?.length ? existing.items : ao.items,
+      });
+    }
+    return Array.from(byId.values());
+  }, [orders, adminFirestoreOrders]);
+
   const handleAdvanceOrderStatus = (orderId: string) => {
-    const target = orders.find((o) => o.id === orderId);
+    const target =
+      orders.find((o) => o.id === orderId) ??
+      adminFirestoreOrders.find((o) => o.id === orderId);
     if (!target) return;
     const nextStatus = getNextStatus(target.status);
     const updatedTarget: Order = { ...target, status: nextStatus };
 
     setOrders((prev) =>
-      prev.map((order) =>
-        order.id === orderId ? updatedTarget : order
-      )
+      prev.map((order) => (order.id === orderId ? updatedTarget : order))
+    );
+    setAdminFirestoreOrders((prev) =>
+      prev.map((order) => (order.id === orderId ? updatedTarget : order))
     );
     void registerOrderSupportMetadata(updatedTarget);
 
@@ -1334,19 +1525,19 @@ export default function App() {
       order.totalTry
     );
 
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === order.id
-          ? {
-              ...o,
-              paymentStatus: 'refunded',
-              paymentDetails: o.paymentDetails
-                ? { ...o.paymentDetails, refundId }
-                : undefined,
-            }
-          : o
-      )
-    );
+    const applyRefund = (o: Order): Order =>
+      o.id === order.id
+        ? {
+            ...o,
+            paymentStatus: 'refunded',
+            paymentDetails: o.paymentDetails
+              ? { ...o.paymentDetails, refundId }
+              : undefined,
+          }
+        : o;
+
+    setOrders((prev) => prev.map(applyRefund));
+    setAdminFirestoreOrders((prev) => prev.map(applyRefund));
 
     if (order.firestoreId && currentUser && currentUser.emailVerified) {
       await updateDoc(doc(db, 'orders', order.firestoreId), {
@@ -1357,6 +1548,20 @@ export default function App() {
         handleFirestoreError(
           error,
           OperationType.UPDATE,
+          `orders/${order.firestoreId}`
+        );
+      });
+    }
+  };
+
+  const handleDeleteOrder = async (order: Order) => {
+    setOrders((prev) => prev.filter((o) => o.id !== order.id));
+    setAdminFirestoreOrders((prev) => prev.filter((o) => o.id !== order.id));
+    if (order.firestoreId && currentUser && currentUser.emailVerified) {
+      await deleteDoc(doc(db, 'orders', order.firestoreId)).catch((error) => {
+        handleFirestoreError(
+          error,
+          OperationType.DELETE,
           `orders/${order.firestoreId}`
         );
       });
@@ -1601,7 +1806,11 @@ export default function App() {
         currentUser={currentUser}
         memberProfile={memberProfile}
         savedCards={savedCards}
-        commissionConfig={commissionConfig}
+        commissionConfig={
+          cartItems[0]?.dish.cityId && !isTurkeyCityId(cartItems[0].dish.cityId)
+            ? nonTurkeyCommissionConfig ?? commissionConfig
+            : commissionConfig
+        }
         onSaveCard={handleSaveCard}
         onDeleteSavedCard={handleDeleteSavedCard}
         onClose={() => setIsCartOpen(false)}
@@ -1707,12 +1916,17 @@ export default function App() {
 
       <AdminPanelModal
         isOpen={isAdminPanelOpen}
-        orders={orders}
+        orders={mergedAdminOrders}
         commissionConfig={commissionConfig}
+        nonTurkeyCommissionConfig={nonTurkeyCommissionConfig}
         onCommissionConfigUpdated={handleCommissionConfigUpdated}
+        onNonTurkeyCommissionConfigUpdated={
+          handleNonTurkeyCommissionConfigUpdated
+        }
         onClose={() => setIsAdminPanelOpen(false)}
         onAdvanceOrderStatus={handleAdvanceOrderStatus}
         onRefundOrder={handleRefundOrder}
+        onDeleteOrder={handleDeleteOrder}
       />
     </div>
   );

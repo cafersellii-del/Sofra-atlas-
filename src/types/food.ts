@@ -169,6 +169,7 @@ export interface AdminUserRecord {
   uid: string;
   email: string;
   note: string;
+  regionScope?: 'all' | 'non_turkey';
 }
 
 export interface CartItem {
@@ -287,6 +288,7 @@ export interface CommissionConfig {
 export interface RestaurantCommissionOverride {
   id: string;
   restaurantName: string;
+  cityId?: Exclude<CityId, 'all'>;
   commissionMode: CommissionMode;
   restaurantCommissionPct: number;
   fixedCommissionTry: number;
@@ -352,6 +354,7 @@ export interface SupportThreadSummary {
   restaurantName: string;
   courierName: string;
   customerName: string;
+  cityId?: Exclude<CityId, 'all'>;
   cityName: string;
   neighborhood: string;
   orderStatus: OrderStatus;

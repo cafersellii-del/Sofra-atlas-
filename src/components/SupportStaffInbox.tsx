@@ -13,12 +13,18 @@ import {
 } from '../hooks/useSupportChat';
 import { useLanguage } from '../i18n/LanguageContext';
 import type { Order, SupportChatChannel } from '../types/food';
+import {
+  type AdminRegionScope,
+  isTurkeyCityId,
+  isTurkeyProvinceName,
+} from '../utils/adminScope';
 
 interface SupportStaffInboxProps {
   orders: Order[];
   enabled?: boolean;
   initialOrderId?: string | null;
   compactHeightClass?: string;
+  regionScope?: AdminRegionScope | null;
 }
 
 function formatMessageTime(iso: string): string {
@@ -37,6 +43,7 @@ export function SupportStaffInbox({
   enabled = true,
   initialOrderId = null,
   compactHeightClass = 'h-[480px]',
+  regionScope = 'all',
 }: SupportStaffInboxProps) {
   const { t } = useLanguage();
   const { threads, loading, sending, sendStaffReply, markThreadReadByStaff } =
@@ -52,13 +59,25 @@ export function SupportStaffInbox({
   const [draft, setDraft] = useState('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  const scopedThreads = useMemo(() => {
+    if (regionScope !== 'non_turkey') return threads;
+    return threads.filter((th) => {
+      if (th.cityId) return !isTurkeyCityId(th.cityId);
+      return !isTurkeyProvinceName(th.cityName);
+    });
+  }, [threads, regionScope]);
+
   // Sync active local/Firestore orders into server inbox metadata when inbox opens
   useEffect(() => {
     if (!enabled) return;
-    orders.slice(0, 15).forEach((ord) => {
+    const eligibleOrders =
+      regionScope === 'non_turkey'
+        ? orders.filter((ord) => !isTurkeyCityId(ord.cityId))
+        : orders;
+    eligibleOrders.slice(0, 15).forEach((ord) => {
       void registerOrderSupportMetadata(ord);
     });
-  }, [enabled, orders]);
+  }, [enabled, orders, regionScope]);
 
   useEffect(() => {
     if (initialOrderId) {
@@ -68,23 +87,23 @@ export function SupportStaffInbox({
 
   const filteredThreads = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr');
-    if (!q) return threads;
-    return threads.filter((th) => {
+    if (!q) return scopedThreads;
+    return scopedThreads.filter((th) => {
       const hay =
         `${th.orderId} ${th.restaurantName} ${th.courierName} ${th.customerName} ${th.cityName}`.toLocaleLowerCase(
           'tr'
         );
       return hay.includes(q);
     });
-  }, [threads, searchQuery]);
+  }, [scopedThreads, searchQuery]);
 
   const activeThread = useMemo(() => {
     if (selectedOrderId) {
-      const match = threads.find((th) => th.orderId === selectedOrderId);
+      const match = scopedThreads.find((th) => th.orderId === selectedOrderId);
       if (match) return match;
     }
-    return filteredThreads[0] ?? threads[0] ?? null;
-  }, [selectedOrderId, threads, filteredThreads]);
+    return filteredThreads[0] ?? scopedThreads[0] ?? null;
+  }, [selectedOrderId, scopedThreads, filteredThreads]);
 
   useEffect(() => {
     if (!activeThread || activeThread.unreadForStaff === 0) return;
