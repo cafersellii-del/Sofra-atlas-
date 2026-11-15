@@ -41,7 +41,7 @@ export function Header({
           href="#top"
           className="font-display text-xl font-semibold tracking-tight text-[#D9043D] whitespace-nowrap shrink-0"
         >
-          Sofra Atlas
+          atlassofra
         </a>
 
         {/* Zone 2: 5 concise single-line navigation links */}

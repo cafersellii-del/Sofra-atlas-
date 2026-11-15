@@ -1064,7 +1064,7 @@ export function CartDrawer({
                 <div className="flex items-center justify-between text-xs pb-3 border-b border-[#E6E4DF]">
                   <span className="text-[#575550]">İşyeri</span>
                   <span className="font-semibold text-[#141413]">
-                    Sofra Atlas · {activeRestaurantName}
+                    atlassofra · {activeRestaurantName}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs pb-3 border-b border-[#E6E4DF]">

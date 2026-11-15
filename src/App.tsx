@@ -484,12 +484,12 @@ export default function App() {
         : undefined;
     if (isNonTurkeyRegionalAdmin) {
       document.title = activeHub
-        ? `${activeHub.country} (${activeHub.name}) Restaurants — Sofra Atlas`
-        : 'Sofra Atlas — Global Restaurants & Online Food Delivery';
+        ? `${activeHub.country} (${activeHub.name}) Restaurants — atlassofra`
+        : 'atlassofra — Global Restaurants & Online Food Delivery';
     } else {
       document.title = activeHub
-        ? `${activeHub.country} (${activeHub.name}) Restoranları — Sofra Atlas`
-        : 'Sofra Atlas — Küresel Restoran ve Online Yemek Siparişi';
+        ? `${activeHub.country} (${activeHub.name}) Restoranları — atlassofra`
+        : 'atlassofra — Küresel Restoran ve Online Yemek Siparişi';
     }
   }, [selectedCity, isNonTurkeyRegionalAdmin]);
 
@@ -519,13 +519,13 @@ export default function App() {
             const rawName = sanitizeText(
               currentUser.displayName ||
                 currentUser.email?.split('@')[0] ||
-                'Sofra Atlas Üyesi',
+                'atlassofra Üyesi',
               VALIDATION_BOUNDS.nameMax
             );
             const safeDisplayName =
               rawName.length >= VALIDATION_BOUNDS.nameMin
                 ? rawName
-                : 'Sofra Atlas Üyesi';
+                : 'atlassofra Üyesi';
             const safeProvince =
               sanitizeText(rawProvince, VALIDATION_BOUNDS.cityNameMax).length >= 2
                 ? sanitizeText(rawProvince, VALIDATION_BOUNDS.cityNameMax)
@@ -1380,13 +1380,13 @@ export default function App() {
 
     if (currentUser && currentUser.emailVerified) {
       const rawRestaurantName = sanitizeText(
-        order.items[0]?.restaurantName ?? 'Sofra Atlas Mutfak',
+        order.items[0]?.restaurantName ?? 'atlassofra Mutfak',
         VALIDATION_BOUNDS.nameMax
       );
       const restaurantName =
         rawRestaurantName.length >= 2
           ? rawRestaurantName
-          : 'Sofra Atlas Mutfak';
+          : 'atlassofra Mutfak';
       const rawCityName = sanitizeText(
         order.cityName,
         VALIDATION_BOUNDS.cityNameMax

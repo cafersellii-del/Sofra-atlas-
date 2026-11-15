@@ -982,7 +982,7 @@ function WorldMapInteractive({
           )}
         </div>
 
-        {/* 3. Registered Sofra Atlas Partners in City */}
+        {/* 3. Registered atlassofra Partners in City */}
         <div className="pt-4 border-t border-[#E6E4DF]">
           <div className="flex items-center justify-between gap-2 mb-2">
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#141413]">
@@ -999,7 +999,7 @@ function WorldMapInteractive({
           </div>
           {cityPartners.length === 0 ? (
             <p className="text-xs text-[#575550]">
-              Bu şehirdeki tüm Sofra Atlas imza mutfakları aşağıdaki katalogda listelenmektedir.
+              Bu şehirdeki tüm atlassofra imza mutfakları aşağıdaki katalogda listelenmektedir.
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">

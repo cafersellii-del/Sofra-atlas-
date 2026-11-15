@@ -136,13 +136,13 @@ export function getExtensionSourceFiles(appOrigin: string): {
   const manifestJson = JSON.stringify(
     {
       manifest_version: 3,
-      name: 'Sofra Atlas — Hızlı Dünya Mutfağı Siparişi',
+      name: 'atlassofra — Hızlı Dünya Mutfağı Siparişi',
       version: '1.0.0',
       description:
         'İstanbul, Tokyo, Napoli, Paris, Bangkok ve New York mutfaklarından tek tıkla yemek siparişi verin.',
       action: {
         default_popup: 'popup.html',
-        default_title: 'Sofra Atlas',
+        default_title: 'atlassofra',
         default_icon: {
           '48': 'icons/icon48.png',
           '128': 'icons/icon128.png',
@@ -164,12 +164,12 @@ export function getExtensionSourceFiles(appOrigin: string): {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sofra Atlas</title>
+    <title>atlassofra</title>
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
     <header class="header">
-      <div class="brand">Sofra Atlas</div>
+      <div class="brand">atlassofra</div>
       <a class="open-app" href="${cleanOrigin}" target="_blank" rel="noopener noreferrer">Siteyi Aç</a>
     </header>
 

@@ -78,7 +78,7 @@ export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) 
           onClick={() => setShowGuide(false)}
           role="dialog"
           aria-modal="true"
-          aria-label="Sofra Atlas Uygulamasını İndir"
+          aria-label="atlassofra Uygulamasını İndir"
         >
           <div
             className="w-full max-w-md bg-white border border-[#E6E4DF] rounded-xl p-6 space-y-4 shadow-xl"
@@ -88,12 +88,12 @@ export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) 
               <div className="flex items-center gap-3">
                 <img
                   src="/pwa-192x192.png"
-                  alt="Sofra Atlas"
+                  alt="atlassofra"
                   className="w-12 h-12 rounded-xl border border-[#E6E4DF] shrink-0"
                 />
                 <div>
                   <h3 className="font-display text-lg font-semibold text-[#141413]">
-                    Sofra Atlas Uygulamasını İndir
+                    atlassofra Uygulamasını İndir
                   </h3>
                   <p className="text-xs text-[#575550]">
                     Android, iOS ve Masaüstü (PWA · Çevrimdışı Hazır)
@@ -183,7 +183,7 @@ export function PWAInstallButton({ variant = 'header' }: PWAInstallButtonProps) 
                       seçeneğine dokunun.
                     </li>
                     <li>
-                      Sofra Atlas bağımsız uygulama penceresiyle ve çevrimdışı
+                      atlassofra bağımsız uygulama penceresiyle ve çevrimdışı
                       menü önbelleğiyle cihazınıza kurulur.
                     </li>
                   </ol>

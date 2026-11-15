@@ -34,7 +34,7 @@ export function Footer({
               href="#top"
               className="font-display text-xl font-semibold text-[#141413]"
             >
-              Sofra Atlas
+              atlassofra
             </a>
             <p className="text-sm text-[#575550] mt-3 max-w-sm leading-relaxed">
               {t.heroSubtitle}

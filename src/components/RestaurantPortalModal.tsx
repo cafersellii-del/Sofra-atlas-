@@ -740,7 +740,7 @@ export function RestaurantPortalModal({
                 <p className="text-sm text-[#575550] leading-relaxed">
                   Google hesabınızla saniyeler içinde restoran üyeliği oluşturun,
                   işletme profilinizi doğrulayın ve imza yemeklerinizi doğrudan
-                  Sofra Atlas menüsünde yayınlayın.
+                  atlassofra menüsünde yayınlayın.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-[#E6E4DF]">

@@ -93,7 +93,7 @@ export function LiveSupportChatModal({
   }, [isOpen, onClose]);
 
   const restaurantName =
-    order?.items[0]?.restaurantName || 'Sofra Atlas Mutfağı';
+    order?.items[0]?.restaurantName || 'atlassofra Mutfağı';
 
   const channelMessages = useMemo(
     () => messages.filter((m) => m.channel === channel),

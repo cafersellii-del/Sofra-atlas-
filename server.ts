@@ -299,7 +299,7 @@ function getOrCreateSupportThread(
   const cleanCityId = sanitizeChatString(meta?.cityId, 32);
   const created: SupportThreadRecord = {
     orderId,
-    restaurantName: sanitizeChatString(meta?.restaurantName, 80) || 'Sofra Atlas Mutfağı',
+    restaurantName: sanitizeChatString(meta?.restaurantName, 80) || 'atlassofra Mutfağı',
     courierName: sanitizeChatString(meta?.courierName, 60) || 'Teslimat Kuryesi',
     customerName: sanitizeChatString(meta?.customerName, 80) || 'Müşteri',
     ...(cleanCityId ? { cityId: cleanCityId } : {}),
@@ -857,7 +857,7 @@ ${body}
     const maskedCard = `${cardBrand} •••• ${last4}`;
     const stripeIntent = await createStripePaymentIntentIfConfigured(
       amountTry,
-      `Sofra Atlas — ${body.restaurantName ?? 'Sipariş'}`
+      `atlassofra — ${body.restaurantName ?? 'Sipariş'}`
     );
     const gatewayLabel = stripeIntent
       ? 'Stripe 3D Secure'
@@ -1115,7 +1115,7 @@ export class ErrorOverlay {
   }
 
   httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`Sofra Atlas server running on http://0.0.0.0:${PORT}`);
+    console.log(`atlassofra server running on http://0.0.0.0:${PORT}`);
   });
 }
 

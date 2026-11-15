@@ -229,7 +229,7 @@ export function MemberAuthModal({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Sofra Atlas Üye Girişi ve Hesabım"
+      aria-label="atlassofra Üye Girişi ve Hesabım"
     >
       <div
         className="w-full max-w-lg bg-white border border-[#E6E4DF] rounded-xl overflow-hidden shadow-xl max-h-[90vh] flex flex-col"
@@ -238,7 +238,7 @@ export function MemberAuthModal({
         <div className="px-6 py-4 border-b border-[#E6E4DF] flex items-center justify-between">
           <div>
             <h2 className="font-display text-lg font-semibold text-[#141413]">
-              {currentUser ? 'Üye Hesabım' : 'Sofra Atlas Üye Girişi'}
+              {currentUser ? 'Üye Hesabım' : 'atlassofra Üye Girişi'}
             </h2>
             <p className="text-xs text-[#575550]">
               {currentUser
@@ -347,7 +347,7 @@ export function MemberAuthModal({
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-display text-base font-semibold text-[#141413] truncate">
-                        {currentUser.displayName || 'Sofra Atlas Üyesi'}
+                        {currentUser.displayName || 'atlassofra Üyesi'}
                       </h3>
                       {currentUser.emailVerified && (
                         <CheckCircle2

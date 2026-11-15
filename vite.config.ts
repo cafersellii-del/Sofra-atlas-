@@ -27,8 +27,8 @@ export default defineConfig(({mode}) => {
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'Sofra Atlas — Küresel Yemek Siparişi',
-          short_name: 'Sofra Atlas',
+          name: 'atlassofra — Küresel Yemek Siparişi',
+          short_name: 'atlassofra',
           description:
             '6 kıtada 196 ülkeden yerel restoranların seçkin lezzetlerini online ödeme ve canlı kurye takibiyle sipariş edin.',
           theme_color: '#D9043D',

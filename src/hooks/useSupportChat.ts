@@ -19,7 +19,7 @@ export interface OrderMetaPayload {
 
 export function buildOrderMeta(order: Order): OrderMetaPayload {
   return {
-    restaurantName: order.items[0]?.restaurantName || 'Sofra Atlas Mutfağı',
+    restaurantName: order.items[0]?.restaurantName || 'atlassofra Mutfağı',
     courierName: order.courierName,
     customerName: order.customerName,
     cityId: order.cityId,
@@ -292,7 +292,7 @@ export function useOrderSupportChat(
           : {
               orderId: order.id,
               restaurantName:
-                order.items[0]?.restaurantName || 'Sofra Atlas Mutfağı',
+                order.items[0]?.restaurantName || 'atlassofra Mutfağı',
               courierName: order.courierName,
               customerName: order.customerName,
               cityName: order.cityName,

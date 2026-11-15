@@ -1140,7 +1140,7 @@ export function AdminPanelModal({
           <div className="flex items-center gap-2 text-sm min-w-0">
             <ShieldCheck className="w-4 h-4 text-[#D9043D] shrink-0" />
             <span className="font-display font-semibold text-[#141413] whitespace-nowrap">
-              Sofra Atlas
+              atlassofra
             </span>
             <span className="text-[#8A8780]">/</span>
             <h2

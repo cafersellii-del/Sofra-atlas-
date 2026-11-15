@@ -56,7 +56,7 @@ export function ExtensionStudioModal({
   const appOrigin =
     typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://sofra-atlas.web.app';
+      : 'https://atlassofra.web.app';
 
   const restaurantOptions = useMemo(() => {
     const map = new Map<string, { id: string; label: string; city: string }>();
@@ -107,7 +107,7 @@ export function ExtensionStudioModal({
 
   const iframeSnippet = `<iframe
   src="${embedUrl}"
-  title="Sofra Atlas Online Sipariş Uzantısı"
+  title="atlassofra Online Sipariş Uzantısı"
   width="100%"
   height="680"
   style="border:1px solid #E6E4DF;border-radius:12px;"
@@ -135,7 +135,7 @@ export function ExtensionStudioModal({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'sofra-atlas-uzantisi.zip';
+      a.download = 'atlassofra-uzantisi.zip';
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -232,7 +232,7 @@ export function ExtensionStudioModal({
                     Her sekmeden tek tıkla yemek siparişi verin.
                   </h3>
                   <p className="text-sm text-[#575550] leading-relaxed mt-2">
-                    Sofra Atlas tarayıcı uzantısı; 6 kıtada {CITY_HUBS.length} ülkedeki menüleri ve
+                    atlassofra tarayıcı uzantısı; 6 kıtada {CITY_HUBS.length} ülkedeki menüleri ve
                     üye restoranların canlı eklediği tabakları doğrudan tarayıcı araç
                     çubuğundan listeler.
                   </p>
@@ -244,7 +244,7 @@ export function ExtensionStudioModal({
                   </p>
                   <ol className="space-y-1.5 text-xs text-[#575550] list-decimal list-inside">
                     <li>
-                      Aşağıdaki düğmeyle <strong className="text-[#141413]">sofra-atlas-uzantisi.zip</strong> dosyasını indirip klasöre çıkarın.
+                      Aşağıdaki düğmeyle <strong className="text-[#141413]">atlassofra-uzantisi.zip</strong> dosyasını indirip klasöre çıkarın.
                     </li>
                     <li>
                       Chrome veya Edge’de <code className="font-mono text-[#141413]">chrome://extensions</code> adresini açıp <strong className="text-[#141413]">Geliştirici Modu</strong>’nu etkinleştirin.
@@ -299,7 +299,7 @@ export function ExtensionStudioModal({
                   {/* Simulated extension popup header */}
                   <div className="px-4 py-3 bg-white border-b border-[#E6E4DF] flex items-center justify-between">
                     <span className="font-display text-base font-semibold text-[#141413]">
-                      Sofra Atlas
+                      atlassofra
                     </span>
                     <span className="text-[11px] font-medium text-[#D9043D]">
                       Tarayıcı Eklentisi
@@ -396,7 +396,7 @@ export function ExtensionStudioModal({
                   Restorana Özel Web Bağlantısı & Gömme Kodu
                 </p>
                 <h3 className="font-display text-2xl font-semibold text-[#141413] leading-snug">
-                  Mevcut web sitenize doğrudan Sofra Atlas sipariş penceresi ekleyin.
+                  Mevcut web sitenize doğrudan atlassofra sipariş penceresi ekleyin.
                 </h3>
                 <p className="text-sm text-[#575550] leading-relaxed mt-2">
                   İster tüm dünya mutfaklarını, ister yalnızca kendi restoranınızın
@@ -419,7 +419,7 @@ export function ExtensionStudioModal({
                       onChange={(e) => setSelectedSlug(e.target.value)}
                       className="w-full px-3.5 py-2.5 min-h-[42px] rounded-lg border border-[#E6E4DF] bg-white text-sm"
                     >
-                      <option value="all">Tüm Sofra Atlas Kataloğu</option>
+                      <option value="all">Tüm atlassofra Kataloğu</option>
                       {restaurantOptions.map((opt) => (
                         <option key={opt.id} value={opt.id}>
                           {opt.label} — {opt.city}
