@@ -1105,6 +1105,8 @@ export class ErrorOverlay {
           .filter(Boolean)
           .join('\n    ');
         html = html
+          .replace(/<link rel="canonical"[^>]*>\s*/gi, '')
+          .replace(/<meta property="og:url"[^>]*>\s*/gi, '')
           .replace(/content="\/og-cover\.jpg"/g, `content="${escapeHtmlAttr(origin)}/og-cover.jpg"`)
           .replace('</head>', `    ${extraTags}\n  </head>`);
         res.type('text/html; charset=utf-8').send(html);

@@ -56,7 +56,7 @@ export function ExtensionStudioModal({
   const appOrigin =
     typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://atlassofra.web.app';
+      : 'https://atlassofra.com.tr';
 
   const restaurantOptions = useMemo(() => {
     const map = new Map<string, { id: string; label: string; city: string }>();
