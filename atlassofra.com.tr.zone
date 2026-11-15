@@ -29,6 +29,13 @@ $TTL 3600
 ; Alt Alan Adı (www -> Google Managed SSL & Hosting CNAME)
 www IN  CNAME   ghs.googlehosted.com.
 
+; CAA Kayıtları (Google Managed SSL ve Let's Encrypt sertifika üretimine izin verir)
+; Bazı .tr kayıt firmaları varsayılan olarak CAA kısıtlaması uyguladığından bu kayıtlar
+; SSL sertifikasının sorunsuz onaylanması için kritik öneme sahiptir.
+@   IN  CAA     0 issue "pki.goog"
+@   IN  CAA     0 issue "letsencrypt.org"
+@   IN  CAA     0 issuewild "pki.goog"
+
 ; Google Search Console / Cloud Run / Firebase Alan Adı Sahiplik Doğrulaması
 ; Aşağıdaki satırın başındaki ";" işaretini kaldırıp Google'ın verdiği gerçek token ile değiştirin:
 ; @   IN  TXT     "google-site-verification=DOGRULAMA_KODU_BURAYA"

@@ -30,7 +30,7 @@ export default defineConfig(({mode}) => {
           name: 'atlassofra — Küresel Yemek Siparişi',
           short_name: 'atlassofra',
           description:
-            '6 kıtada 196 ülkeden yerel restoranların seçkin lezzetlerini online ödeme ve canlı kurye takibiyle sipariş edin.',
+            '6 kıtada 197 ülkeden yerel restoranların seçkin lezzetlerini online ödeme ve canlı kurye takibiyle sipariş edin.',
           theme_color: '#D9043D',
           background_color: '#FAF9F7',
           display: 'standalone',
@@ -61,7 +61,12 @@ export default defineConfig(({mode}) => {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           navigateFallback: 'index.html',
-          navigateFallbackDenylist: [/^\/api\//, /^\/robots\.txt$/, /^\/sitemap\.xml$/],
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            /^\/\.well-known\//,
+            /^\/robots\.txt$/,
+            /^\/sitemap\.xml$/,
+          ],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,

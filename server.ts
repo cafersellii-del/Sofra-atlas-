@@ -1,12 +1,19 @@
 import 'dotenv/config';
 import express from 'express';
+import { execFile } from 'node:child_process';
+import dns from 'node:dns/promises';
 import fs from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
+import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { ALL_COUNTRY_HUBS } from './src/data/countries.ts';
+
+const execFileAsync = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -420,17 +427,291 @@ function commitSupportMessage(input: {
 
 loadSupportThreadsFromDisk();
 
+const CLOUD_RUN_ANYCAST_IPV4 = [
+  '216.239.32.21',
+  '216.239.34.21',
+  '216.239.36.21',
+  '216.239.38.21',
+];
+
+function sanitizeHostname(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  const cleaned = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    ?.split(':')[0]
+    ?.replace(/\.$/, '') ?? '';
+  if (
+    cleaned.length < 3 ||
+    cleaned.length > 253 ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
+      cleaned
+    )
+  ) {
+    return '';
+  }
+  return cleaned;
+}
+
+interface TlsInspectionResult {
+  host: string;
+  reachable: boolean;
+  authorized: boolean;
+  authorizationError: string | null;
+  protocol: string | null;
+  cipher: string | null;
+  subject: string | null;
+  issuer: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  daysRemaining: number | null;
+  serialNumber: string | null;
+  fingerprint256: string | null;
+  subjectAltNames: string[];
+  error: string | null;
+}
+
+async function inspectTlsCertificate(host: string): Promise<TlsInspectionResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const socket = tls.connect({
+      host,
+      port: 443,
+      servername: host,
+      rejectUnauthorized: false,
+      timeout: 4500,
+    });
+
+    const finish = (result: TlsInspectionResult) => {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch {
+        // Ignore cleanup errors
+      }
+      resolve(result);
+    };
+
+    socket.once('secureConnect', () => {
+      const cert = socket.getPeerCertificate(true);
+      const validFrom = cert?.valid_from ? new Date(cert.valid_from) : null;
+      const validTo = cert?.valid_to ? new Date(cert.valid_to) : null;
+      const daysRemaining =
+        validTo && !Number.isNaN(validTo.getTime())
+          ? Math.floor((validTo.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+          : null;
+
+      const sanRaw = typeof cert?.subjectaltname === 'string' ? cert.subjectaltname : '';
+      const subjectAltNames = sanRaw
+        .split(',')
+        .map((item) => item.trim().replace(/^DNS:/i, ''))
+        .filter(Boolean);
+
+      const subjectLabel =
+        cert?.subject?.CN ||
+        (cert?.subject ? Object.values(cert.subject).join(', ') : null);
+      const issuerLabel =
+        [cert?.issuer?.O, cert?.issuer?.CN].filter(Boolean).join(' · ') || null;
+
+      const cipherInfo = socket.getCipher();
+      finish({
+        host,
+        reachable: true,
+        authorized: socket.authorized,
+        authorizationError: socket.authorizationError
+          ? String(socket.authorizationError)
+          : null,
+        protocol: socket.getProtocol() ?? null,
+        cipher: cipherInfo?.name ?? null,
+        subject: subjectLabel,
+        issuer: issuerLabel,
+        validFrom: validFrom && !Number.isNaN(validFrom.getTime()) ? validFrom.toISOString() : null,
+        validTo: validTo && !Number.isNaN(validTo.getTime()) ? validTo.toISOString() : null,
+        daysRemaining,
+        serialNumber: cert?.serialNumber ?? null,
+        fingerprint256: cert?.fingerprint256 ?? null,
+        subjectAltNames,
+        error: null,
+      });
+    });
+
+    socket.once('timeout', () => {
+      finish({
+        host,
+        reachable: false,
+        authorized: false,
+        authorizationError: null,
+        protocol: null,
+        cipher: null,
+        subject: null,
+        issuer: null,
+        validFrom: null,
+        validTo: null,
+        daysRemaining: null,
+        serialNumber: null,
+        fingerprint256: null,
+        subjectAltNames: [],
+        error: 'TLS el sıkışması zaman aşımına uğradı (443 portu yanıt vermedi).',
+      });
+    });
+
+    socket.once('error', (err) => {
+      finish({
+        host,
+        reachable: false,
+        authorized: false,
+        authorizationError: null,
+        protocol: null,
+        cipher: null,
+        subject: null,
+        issuer: null,
+        validFrom: null,
+        validTo: null,
+        daysRemaining: null,
+        serialNumber: null,
+        fingerprint256: null,
+        subjectAltNames: [],
+        error: err.message,
+      });
+    });
+  });
+}
+
+async function inspectDnsRecords(domain: string) {
+  const resolver = new dns.Resolver();
+  const [aRes, aaaaRes, wwwCnameRes, caaRes, txtRes] = await Promise.allSettled([
+    resolver.resolve4(domain),
+    resolver.resolve6(domain),
+    resolver.resolveCname(`www.${domain}`),
+    resolver.resolveCaa(domain),
+    resolver.resolveTxt(domain),
+  ]);
+
+  const aRecords = aRes.status === 'fulfilled' ? aRes.value : [];
+  const aaaaRecords = aaaaRes.status === 'fulfilled' ? aaaaRes.value : [];
+  const wwwCname = wwwCnameRes.status === 'fulfilled' ? wwwCnameRes.value : [];
+  const caaRecords =
+    caaRes.status === 'fulfilled'
+      ? caaRes.value.map((r) => `${r.critical} ${r.issue ? `issue "${r.issue}"` : r.issuewild ? `issuewild "${r.issuewild}"` : ''}`.trim())
+      : [];
+  const txtRecords =
+    txtRes.status === 'fulfilled' ? txtRes.value.map((parts) => parts.join('')) : [];
+
+  const pointsToCloudRun = aRecords.some((ip) => CLOUD_RUN_ANYCAST_IPV4.includes(ip));
+  const wwwPointsToGoogle = wwwCname.some((c) =>
+    c.toLowerCase().replace(/\.$/, '').endsWith('ghs.googlehosted.com')
+  );
+  const caaAllowsGoogleOrLetsEncrypt =
+    caaRecords.length === 0 ||
+    caaRecords.some(
+      (c) => c.includes('pki.goog') || c.includes('letsencrypt.org')
+    );
+
+  return {
+    domain,
+    aRecords,
+    aaaaRecords,
+    wwwCname,
+    caaRecords,
+    txtRecords,
+    checks: {
+      hasApexA: aRecords.length > 0,
+      pointsToCloudRun,
+      wwwPointsToGoogle,
+      caaAllowsSsl: caaAllowsGoogleOrLetsEncrypt,
+    },
+  };
+}
+
+function buildZoneFileContent(domain: string): string {
+  const safeDomain = sanitizeHostname(domain) || 'atlassofra.com.tr';
+  return `; RFC 1035 / BIND DNS Zone File — ${safeDomain}
+$ORIGIN ${safeDomain}.
+$TTL 3600
+
+; Kök Alan Adı (Google Cloud Run Anycast IPv4 A Kayıtları)
+@   IN  A       216.239.32.21
+@   IN  A       216.239.34.21
+@   IN  A       216.239.36.21
+@   IN  A       216.239.38.21
+
+; Kök Alan Adı (Google Cloud Run Anycast IPv6 AAAA Kayıtları)
+@   IN  AAAA    2001:4860:4802:32::15
+@   IN  AAAA    2001:4860:4802:34::15
+@   IN  AAAA    2001:4860:4802:36::15
+@   IN  AAAA    2001:4860:4802:38::15
+
+; Alt Alan Adı (www -> Google Managed SSL & Hosting CNAME)
+www IN  CNAME   ghs.googlehosted.com.
+
+; CAA Kayıtları (Google Managed SSL ve Let's Encrypt sertifika üretimi için)
+@   IN  CAA     0 issue "pki.goog"
+@   IN  CAA     0 issue "letsencrypt.org"
+@   IN  CAA     0 issuewild "pki.goog"
+
+; Google Search Console / Cloud Run / Firebase Alan Adı Sahiplik Doğrulaması
+; @   IN  TXT     "google-site-verification=DOGRULAMA_KODU_BURAYA"
+`;
+}
+
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
-  const httpServer = http.createServer(app);
+
+  const sslCertPath = process.env.SSL_CERT_PATH?.trim();
+  const sslKeyPath = process.env.SSL_KEY_PATH?.trim();
+  let nativeTlsEnabled = false;
+  let httpServer: http.Server | https.Server;
+
+  if (
+    sslCertPath &&
+    sslKeyPath &&
+    fs.existsSync(sslCertPath) &&
+    fs.existsSync(sslKeyPath)
+  ) {
+    httpServer = https.createServer(
+      {
+        cert: fs.readFileSync(sslCertPath),
+        key: fs.readFileSync(sslKeyPath),
+      },
+      app
+    );
+    nativeTlsEnabled = true;
+  } else {
+    httpServer = http.createServer(app);
+  }
+
   app.use(express.json({ limit: '256kb' }));
 
   const canonicalCustomDomain = (process.env.CUSTOM_DOMAIN || 'atlassofra.com.tr')
     .trim()
     .toLowerCase();
-  if (isProduction && canonicalCustomDomain) {
-    app.use((req, res, next) => {
+
+  app.use((req, res, next) => {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '')
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase();
+    const isHttpsRequest =
+      req.secure || forwardedProto === 'https' || nativeTlsEnabled;
+
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader(
+      'Permissions-Policy',
+      'geolocation=(self), camera=(), microphone=()'
+    );
+    if (isHttpsRequest || isProduction) {
+      res.setHeader(
+        'Strict-Transport-Security',
+        'max-age=31536000; includeSubDomains; preload'
+      );
+    }
+
+    if (isProduction) {
       const forwardedHost = String(
         req.headers['x-forwarded-host'] ?? req.headers.host ?? ''
       )
@@ -438,13 +719,22 @@ async function startServer() {
         ?.trim()
         .toLowerCase()
         .replace(/:\d+$/, '');
-      if (forwardedHost === `www.${canonicalCustomDomain}`) {
+
+      const isAcmeChallenge = req.path.startsWith('/.well-known/');
+
+      if (canonicalCustomDomain && forwardedHost === `www.${canonicalCustomDomain}`) {
         res.redirect(301, `https://${canonicalCustomDomain}${req.originalUrl || '/'}`);
         return;
       }
-      next();
-    });
-  }
+
+      if (!isAcmeChallenge && forwardedProto === 'http' && forwardedHost) {
+        res.redirect(301, `https://${forwardedHost}${req.originalUrl || '/'}`);
+        return;
+      }
+    }
+
+    next();
+  });
 
   const supportWss = new WebSocketServer({ noServer: true });
   const wsAliveMap = new WeakMap<WebSocket, boolean>();
@@ -980,6 +1270,252 @@ ${body}
       last4: session.last4,
       maskedCard: session.maskedCard,
       amountTry: session.amountTry,
+    });
+  });
+
+  app.get('/api/ssl/status', async (req, res) => {
+    const requestedDomain = sanitizeHostname(req.query.domain);
+    const targetDomain =
+      requestedDomain || sanitizeHostname(canonicalCustomDomain) || 'atlassofra.com.tr';
+
+    const requestHostRaw = String(
+      req.headers['x-forwarded-host'] ?? req.get('host') ?? ''
+    )
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase()
+      .split(':')[0] ?? '';
+    const activeHost = sanitizeHostname(requestHostRaw);
+
+    const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '')
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase();
+    const requestIsHttps =
+      req.secure || forwardedProto === 'https' || nativeTlsEnabled;
+
+    const [dnsReport, domainTls, activeHostTls] = await Promise.all([
+      inspectDnsRecords(targetDomain),
+      inspectTlsCertificate(targetDomain),
+      activeHost && activeHost !== targetDomain
+        ? inspectTlsCertificate(activeHost)
+        : Promise.resolve(null),
+    ]);
+
+    res.json({
+      checkedAt: new Date().toISOString(),
+      targetDomain,
+      activeOrigin: resolvePublicOrigin(req),
+      requestIsHttps,
+      nativeTlsEnabled,
+      hstsEnabled: requestIsHttps || isProduction,
+      dns: dnsReport,
+      domainTls,
+      activeHostTls,
+    });
+  });
+
+  app.get('/api/ssl/zone', (req, res) => {
+    const requestedDomain = sanitizeHostname(req.query.domain) || canonicalCustomDomain;
+    res.type('text/plain; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${requestedDomain}.zone"`
+    );
+    res.send(buildZoneFileContent(requestedDomain));
+  });
+
+  app.post('/api/ssl/generate', async (req, res) => {
+    const body = (req.body ?? {}) as {
+      domain?: string;
+      mode?: 'self_signed' | 'csr';
+      organization?: string;
+      country?: string;
+      validityDays?: number;
+    };
+
+    const domain = sanitizeHostname(body.domain) || sanitizeHostname(canonicalCustomDomain) || 'atlassofra.com.tr';
+    const mode = body.mode === 'csr' ? 'csr' : 'self_signed';
+    const organization =
+      (body.organization ?? 'atlassofra')
+        .replace(/[^a-zA-Z0-9 ._-]/g, '')
+        .trim()
+        .slice(0, 64) || 'atlassofra';
+    const country =
+      (body.country ?? 'TR')
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .slice(0, 2) || 'TR';
+    const validityDays = Math.min(
+      825,
+      Math.max(30, Math.round(Number(body.validityDays ?? 365) || 365))
+    );
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sofra-ssl-'));
+    const keyPath = path.join(tmpDir, 'privkey.pem');
+    const outPath = path.join(tmpDir, mode === 'csr' ? 'request.csr.pem' : 'fullchain.pem');
+    const cnfPath = path.join(tmpDir, 'openssl.cnf');
+
+    try {
+      const opensslConfig = `[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+${mode === 'csr' ? 'req_extensions = v3_ext' : 'x509_extensions = v3_ext'}
+
+[dn]
+C = ${country}
+O = ${organization}
+CN = ${domain}
+
+[v3_ext]
+subjectAltName = @alt_names
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = ${domain}
+DNS.2 = www.${domain}
+`;
+      fs.writeFileSync(cnfPath, opensslConfig, 'utf-8');
+
+      if (mode === 'csr') {
+        await execFileAsync('openssl', [
+          'req',
+          '-new',
+          '-newkey',
+          'rsa:2048',
+          '-nodes',
+          '-keyout',
+          keyPath,
+          '-out',
+          outPath,
+          '-config',
+          cnfPath,
+        ]);
+      } else {
+        await execFileAsync('openssl', [
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-nodes',
+          '-sha256',
+          '-days',
+          String(validityDays),
+          '-keyout',
+          keyPath,
+          '-out',
+          outPath,
+          '-config',
+          cnfPath,
+        ]);
+      }
+
+      const privateKeyPem = fs.readFileSync(keyPath, 'utf-8');
+      const primaryPem = fs.readFileSync(outPath, 'utf-8');
+
+      let fingerprint256 = '';
+      let validTo = '';
+      if (mode === 'self_signed') {
+        const { stdout: x509Info } = await execFileAsync('openssl', [
+          'x509',
+          '-in',
+          outPath,
+          '-noout',
+          '-fingerprint',
+          '-sha256',
+          '-enddate',
+        ]);
+        const fpMatch = /Fingerprint=([^\r\n]+)/i.exec(x509Info);
+        const endMatch = /notAfter=([^\r\n]+)/i.exec(x509Info);
+        fingerprint256 = fpMatch?.[1]?.trim() ?? '';
+        validTo = endMatch?.[1]?.trim() ?? '';
+      }
+
+      res.json({
+        ok: true,
+        mode,
+        domain,
+        san: [domain, `www.${domain}`],
+        validityDays: mode === 'self_signed' ? validityDays : null,
+        fingerprint256,
+        validTo,
+        primaryPem,
+        privateKeyPem,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? `SSL anahtar/sertifika üretimi başarısız: ${error.message}`
+            : 'SSL üretimi sırasında beklenmeyen bir hata oluştu.',
+      });
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // Ignore temp dir cleanup errors
+      }
+    }
+  });
+
+  app.get('/api/system/health', (req, res) => {
+    const mem = process.memoryUsage();
+    const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '')
+      .split(',')[0]
+      ?.trim()
+      .toLowerCase();
+    res.json({
+      ok: true,
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+      nodeVersion: process.version,
+      environment: isProduction ? 'production' : 'development',
+      canonicalCustomDomain,
+      requestProtocol:
+        req.secure || forwardedProto === 'https' || nativeTlsEnabled
+          ? 'https'
+          : 'http',
+      nativeTlsEnabled,
+      memoryMb: {
+        rss: Math.round(mem.rss / 1024 / 1024),
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+      },
+      activeSupportThreads: supportThreads.size,
+      activePaymentSessions: paymentSessions.size,
+      activeWsClients: supportWss.clients.size,
+    });
+  });
+
+  app.post('/api/system/reset', (_req, res) => {
+    const clearedPaymentSessions = paymentSessions.size;
+    const clearedSupportThreads = supportThreads.size;
+
+    paymentSessions.clear();
+    supportThreads.clear();
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+    try {
+      if (fs.existsSync(SUPPORT_STORE_PATH)) {
+        fs.unlinkSync(SUPPORT_STORE_PATH);
+      }
+    } catch {
+      // Ignore unlink errors
+    }
+
+    for (const client of inboxClients) {
+      sendWsJson(client, { type: 'inbox:snapshot', threads: [] });
+    }
+
+    res.json({
+      ok: true,
+      clearedAt: new Date().toISOString(),
+      clearedPaymentSessions,
+      clearedSupportThreads,
     });
   });
 
